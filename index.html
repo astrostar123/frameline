@@ -1,0 +1,2595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Read camera settings from your photos and add a clean EXIF frame.">
+<title>Frameline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Josefin+Sans:wght@300;400;600;700&family=Jost:wght@300;400;500;600;700&family=Montserrat:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<style>
+  /* ============================================================
+     Colour tokens. Light = a photographer's light table,
+     dark = the darkroom. The camera "LCD" stays dark in both.
+     ============================================================ */
+  :root {
+    --bg: #E4E6E7;
+    --panel: #F5F6F6;
+    --raised: #FFFFFF;
+    --ink: #16181B;
+    --ink-2: #3D434A;
+    --muted: #666D76;
+    --line: #D3D7DB;
+    --line-strong: #B7BCC2;
+    --stage: #C9CBCD;
+    --accent: #9C5C00;
+    --accent-hover: #834C00;
+    --accent-ink: #FFFFFF;
+    --accent-soft: rgba(156, 92, 0, 0.11);
+    --lcd: #17191B;
+    --lcd-ink: #F1EFE8;
+    --lcd-dim: #8D949B;
+    --lcd-glow: #FFB547;
+    --warn: #B4431E;
+    --toast-bg: #16181B;
+    --toast-ink: #F5F6F6;
+    --shadow-photo: 0 2px 6px rgba(15, 17, 20, 0.16), 0 18px 44px rgba(15, 17, 20, 0.22);
+    --font-ui: "Archivo", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0F1011;
+      --panel: #16171A;
+      --raised: #1E2023;
+      --ink: #ECEDEE;
+      --ink-2: #C3C7CC;
+      --muted: #8E949B;
+      --line: #2A2D31;
+      --line-strong: #3B3F45;
+      --stage: #0A0A0B;
+      --accent: #FFB547;
+      --accent-hover: #FFC66E;
+      --accent-ink: #1C1300;
+      --accent-soft: rgba(255, 181, 71, 0.13);
+      --lcd: #08090A;
+      --warn: #FF8A5C;
+      --toast-bg: #ECEDEE;
+      --toast-ink: #16181B;
+      --shadow-photo: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 50px rgba(0, 0, 0, 0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0F1011;
+    --panel: #16171A;
+    --raised: #1E2023;
+    --ink: #ECEDEE;
+    --ink-2: #C3C7CC;
+    --muted: #8E949B;
+    --line: #2A2D31;
+    --line-strong: #3B3F45;
+    --stage: #0A0A0B;
+    --accent: #FFB547;
+    --accent-hover: #FFC66E;
+    --accent-ink: #1C1300;
+    --accent-soft: rgba(255, 181, 71, 0.13);
+    --lcd: #08090A;
+    --warn: #FF8A5C;
+    --toast-bg: #ECEDEE;
+    --toast-ink: #16181B;
+    --shadow-photo: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 50px rgba(0, 0, 0, 0.6);
+  }
+
+  /* ============================================================
+     Base
+     ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; margin: -1px;
+  }
+
+  /* ============================================================
+     App layout: controls | stage | inspector
+     ============================================================ */
+  .app {
+    display: grid;
+    height: 100%;
+    grid-template-columns: 300px minmax(0, 1fr) 344px;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "top top top"
+      "controls stage inspector";
+  }
+  .topbar {
+    grid-area: top;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand svg { color: var(--accent); flex: none; }
+  .wordmark {
+    font-weight: 800;
+    font-stretch: 125%;
+    font-size: 17px;
+    line-height: 1;
+    letter-spacing: 0.14em;
+  }
+  .brand-sub { font-size: 12.5px; color: var(--muted); }
+  .top-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .status:empty { display: none; }
+  .status {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .panel {
+    background: var(--panel);
+    overflow-y: auto;
+    min-height: 0;
+    padding: 18px 18px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .controls { grid-area: controls; border-right: 1px solid var(--line); }
+  .inspector { grid-area: inspector; border-left: 1px solid var(--line); }
+
+  .stage-wrap {
+    grid-area: stage;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    min-width: 0;
+    min-height: 0;
+    background: var(--stage);
+  }
+  .stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+  #preview { display: block; box-shadow: var(--shadow-photo); }
+
+  @media (max-width: 1179px) {
+    .app {
+      height: auto;
+      min-height: 100%;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-rows: auto auto auto;
+      grid-template-areas:
+        "top top"
+        "stage stage"
+        "controls inspector";
+    }
+    .panel { overflow: visible; }
+    .stage { flex: none; height: clamp(300px, 62vh, 760px); }
+    .inspector { border-left: 0; }
+  }
+  @media (max-width: 759px) {
+    .app {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "top" "stage" "inspector" "controls";
+    }
+    .controls { border-right: 0; border-top: 1px solid var(--line); }
+    .stage { height: clamp(240px, 46vh, 460px); }
+    .brand-sub { display: none; }
+    .btn { padding: 0 11px; }
+    .top-actions { width: 100%; }
+    .top-actions .btn { flex: 1 1 auto; }
+  }
+
+  /* ============================================================
+     Controls
+     ============================================================ */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 8px;
+    border: 1px solid var(--line-strong);
+    background: var(--raised);
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 560;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--ink-2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .btn.small { height: 30px; padding: 0 10px; font-size: 12.5px; }
+  .btn svg { flex: none; }
+  .linkbtn {
+    align-self: flex-start;
+    border: 0; background: none; padding: 2px 0;
+    color: var(--accent);
+    font-size: 12.5px; font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .group { display: flex; flex-direction: column; gap: 10px; }
+  .eyebrow {
+    margin: 0;
+    font-size: 10.5px;
+    font-weight: 650;
+    font-stretch: 125%;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > label, .label {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 560;
+    color: var(--ink-2);
+  }
+  .field output { font-family: var(--font-mono); font-weight: 400; color: var(--muted); }
+  input[type="text"], input[type="search"], select {
+    width: 100%;
+    min-width: 0;
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--line-strong);
+    background: var(--raised);
+  }
+  input[type="text"]::placeholder, input[type="search"]::placeholder { color: var(--muted); opacity: 1; }
+  input[type="range"] { width: 100%; margin: 2px 0; accent-color: var(--accent); }
+  .note { margin: 0; font-size: 12px; color: var(--muted); }
+
+  /* Frame style picker */
+  .tpl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .tpl {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 6px 7px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--raised);
+    cursor: pointer;
+    text-align: center;
+  }
+  .tpl:hover { border-color: var(--line-strong); }
+  .tpl[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .tpl-box {
+    aspect-ratio: 1 / 1;
+    max-width: 100%;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    background: var(--stage);
+    overflow: hidden;
+  }
+  .tpl-box canvas { display: block; }
+  .tpl-name { font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
+
+  /* Toggle chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { position: relative; display: inline-flex; }
+  .chip input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+  .chip span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--line-strong);
+    background: var(--raised);
+    color: var(--ink-2);
+    font-size: 12.5px;
+    font-weight: 560;
+  }
+  .chip input:checked + span { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+  .chip input:checked + span::before { content: "✓"; font-size: 11px; color: var(--accent); }
+  .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Segmented buttons */
+  .seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .seg button {
+    flex: 1 1 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink-2);
+    font-size: 12.5px;
+    font-weight: 560;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] {
+    background: var(--raised);
+    color: var(--ink);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--line);
+  }
+  .swatch {
+    width: 12px; height: 12px;
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+    flex: none;
+  }
+  .color-row { display: flex; gap: 8px; align-items: stretch; }
+  .color-row .seg { flex: 1; }
+  input[type="color"] {
+    width: 40px;
+    height: auto;
+    min-height: 36px;
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid var(--line-strong);
+    background: var(--raised);
+    cursor: pointer;
+  }
+
+  /* ============================================================
+     Stage + film strip
+     ============================================================ */
+  .stage-empty, .stage-msg {
+    max-width: 400px;
+    padding: 24px;
+    border-radius: 12px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+  }
+  .stage-empty h2, .stage-msg h2 { margin: 0; font-size: 16px; font-stretch: 112%; text-wrap: balance; }
+  .stage-empty p, .stage-msg p { margin: 0; color: var(--muted); font-size: 13px; }
+  .stage-hint {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 16px);
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--ink-2);
+    font-size: 12.5px;
+    text-align: center;
+  }
+
+  .roll { display: flex; flex-direction: column; gap: 6px; flex: none; }
+  .roll-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+  .roll-head .out { font-family: var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .roll-nav { display: flex; align-items: center; gap: 6px; }
+  .roll-nav .counter { font-family: var(--font-mono); min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+  .iconbtn {
+    width: 30px; height: 30px;
+    display: inline-grid; place-items: center;
+    border-radius: 7px;
+    border: 1px solid var(--line-strong);
+    background: var(--raised);
+    cursor: pointer;
+  }
+  .iconbtn:disabled { opacity: 0.4; cursor: default; }
+
+  /* The strip itself looks like a length of 35mm film */
+  .filmstrip {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 16px 12px 14px;
+    border-radius: 6px;
+    background-color: #141312;
+    background-image:
+      repeating-linear-gradient(90deg, #45423d 0 7px, transparent 7px 17px),
+      repeating-linear-gradient(90deg, #45423d 0 7px, transparent 7px 17px);
+    background-size: 100% 5px, 100% 5px;
+    background-position: 0 5px, 0 calc(100% - 5px);
+    background-repeat: no-repeat;
+    background-attachment: local;
+    scrollbar-width: thin;
+  }
+  .frame { position: relative; flex: none; display: flex; flex-direction: column; gap: 5px; }
+  .frame-pick {
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 3px;
+    background: none;
+    line-height: 0;
+    cursor: pointer;
+  }
+  .frame-pick img { display: block; height: 58px; width: auto; max-width: 120px; border-radius: 1px; }
+  .frame-pick .nothumb {
+    display: grid; place-items: center;
+    width: 76px; height: 58px;
+    background: #2a2825; color: #b9b3a8;
+    font: 600 10px/1.2 var(--font-mono);
+  }
+  .frame[aria-current="true"] .frame-pick { border-color: #FFB547; }
+  .frame-no {
+    font: 500 10px/1 var(--font-mono);
+    letter-spacing: 0.08em;
+    color: #E9A23B;
+    white-space: nowrap;
+  }
+  .frame-rm {
+    position: absolute;
+    top: -7px; right: -7px;
+    width: 20px; height: 20px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    border: 0;
+    background: #F1EFE8;
+    color: #141312;
+    font-size: 13px; line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+  }
+  .frame:hover .frame-rm, .frame[aria-current="true"] .frame-rm, .frame-rm:focus-visible { opacity: 1; }
+  .frame-add {
+    flex: none;
+    display: grid; place-items: center;
+    width: 76px; height: 62px;
+    margin-bottom: 15px;
+    border: 1.5px dashed #6b665e;
+    border-radius: 4px;
+    color: #d8d2c6;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+  .frame-add:hover { border-color: #FFB547; color: #FFB547; }
+
+  /* ============================================================
+     Inspector
+     ============================================================ */
+  .insp-head { display: flex; flex-direction: column; gap: 4px; }
+  .file-name { margin: 0; font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+  .file-meta { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .pill {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border: 1px solid var(--line-strong);
+    color: var(--ink-2);
+  }
+  .pill.accent { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .pill.warn { border-color: var(--warn); color: var(--warn); }
+
+  /* Camera top-plate LCD */
+  .lcd {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+    padding: 14px 14px 12px;
+    border-radius: 10px;
+    background: var(--lcd);
+    color: var(--lcd-ink);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+  .lcd-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .lcd-k {
+    font-size: 9.5px;
+    font-weight: 650;
+    font-stretch: 125%;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--lcd-dim);
+  }
+  .lcd-v {
+    font-family: var(--font-mono);
+    font-size: 26px;
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lcd-v small { margin-left: 3px; font-size: 13px; color: var(--lcd-dim); }
+  .lcd-v.na { color: #4F555B; }
+  .lcd-foot {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--lcd-dim);
+  }
+  .lcd-foot b { font-weight: 500; color: var(--lcd-glow); }
+  .meter { grid-column: 1 / -1; position: relative; height: 34px; margin: 0 8px; }
+  .meter span, .meter i, .meter .mark { position: absolute; transform: translateX(-50%); }
+  .meter span { top: 0; font: 500 10px/1 var(--font-mono); color: var(--lcd-dim); }
+  .meter i { bottom: 10px; width: 1px; height: 4px; background: var(--lcd-dim); }
+  .meter i.major { height: 9px; }
+  .meter .mark {
+    bottom: 0;
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 7px solid var(--lcd-glow);
+  }
+
+  #histo {
+    display: block;
+    width: 100%;
+    height: 92px;
+    border-radius: 6px;
+    background: var(--raised);
+    border: 1px solid var(--line);
+  }
+  .histo-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .histo-foot .hot { color: var(--warn); font-weight: 600; }
+
+  .kv {
+    display: grid;
+    grid-template-columns: minmax(92px, 38%) minmax(0, 1fr);
+    gap: 7px 12px;
+    margin: 0;
+    font-size: 13px;
+  }
+  .kv dt { color: var(--muted); }
+  .kv dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+  }
+  .kv dd .sub { color: var(--muted); }
+  .kv a { color: var(--accent); }
+
+  details.alltags summary {
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  details.alltags[open] summary { margin-bottom: 10px; }
+  .tag-wrap {
+    max-height: 360px;
+    overflow: auto;
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--raised);
+  }
+  .tag-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 11.5px; }
+  .tag-table td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  .tag-table td:first-child { width: 44%; color: var(--muted); }
+  .tag-table tr:last-child td { border-bottom: 0; }
+
+  .insp-empty { color: var(--muted); font-size: 13px; }
+
+  /* ============================================================
+     Drop overlay + toasts
+     ============================================================ */
+  .drop {
+    position: fixed;
+    inset: 12px;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    border: 2px dashed var(--lcd-glow);
+    border-radius: 14px;
+    background: rgba(8, 9, 10, 0.62);
+    color: #F1EFE8;
+    font-size: 20px;
+    font-weight: 700;
+    font-stretch: 125%;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+  .toasts {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 60;
+    transform: translateX(-50%);
+    width: min(calc(100vw - 32px), 440px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    padding: 10px 14px;
+    border-radius: 9px;
+    background: var(--toast-bg);
+    color: var(--toast-ink);
+    font-size: 13px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+    animation: toast-in 0.18s ease-out;
+  }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
+  @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+  <!-- ===== Top bar ===== -->
+  <header class="topbar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+        <path d="M2 7V2h5M15 2h5v5M20 15v5h-5M7 20H2v-5" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="11" cy="11" r="2.4" fill="currentColor"/>
+      </svg>
+      <span class="wordmark">FRAMELINE</span>
+      <span class="brand-sub">Camera settings, read and framed</span>
+    </div>
+    <div class="top-actions">
+      <span class="status" id="status" aria-live="polite"></span>
+      <label class="btn" for="fileInput">
+        <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4 6l4-4 4 4M2 13h12" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        Open photos
+      </label>
+      <input class="visually-hidden" type="file" id="fileInput" multiple accept="image/*,.heic,.heif,.tif,.tiff,.dng,.cr2,.nef,.arw">
+      <button class="btn primary" type="button" id="exportBtn">Export photo</button>
+      <button class="btn" type="button" id="exportAllBtn">Export all (.zip)</button>
+    </div>
+  </header>
+
+  <!-- ===== Left: frame settings ===== -->
+  <aside class="panel controls" aria-label="Frame settings">
+    <section class="group">
+      <h2 class="eyebrow">Frame style</h2>
+      <div class="tpl-grid" id="tplGrid" role="radiogroup" aria-label="Frame style"></div>
+    </section>
+
+    <section class="group">
+      <h2 class="eyebrow">Show on frame</h2>
+      <div class="chips" id="fieldChips"></div>
+      <div class="field" id="customRow">
+        <label for="customText">Custom text</label>
+        <input type="text" id="customText" maxlength="80" placeholder="For example © Your Name">
+      </div>
+    </section>
+
+    <section class="group">
+      <h2 class="eyebrow">Names on this photo</h2>
+      <div class="field">
+        <label for="ovCamera">Camera</label>
+        <input type="text" id="ovCamera" maxlength="60" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="ovLens">Lens</label>
+        <input type="text" id="ovLens" maxlength="90" autocomplete="off">
+      </div>
+      <button class="linkbtn" type="button" id="applyAllBtn">Use these names on every photo</button>
+    </section>
+
+    <section class="group">
+      <h2 class="eyebrow">Type and frame</h2>
+      <div class="field">
+        <label for="fontSel">Font</label>
+        <select id="fontSel"></select>
+      </div>
+      <div class="field">
+        <label for="textScale">Text size <output id="textScaleOut" for="textScale"></output></label>
+        <input type="range" id="textScale" min="0.6" max="1.6" step="0.05">
+      </div>
+      <div class="field">
+        <label for="borderSize"><span id="borderLabel">Border</span> <output id="borderOut" for="borderSize"></output></label>
+        <input type="range" id="borderSize" min="0" max="2" step="0.05">
+      </div>
+      <div class="field" id="colorRow">
+        <span class="label" id="colorLabel">Frame colour</span>
+        <div class="color-row">
+          <div class="seg" id="colorSeg" aria-labelledby="colorLabel"></div>
+          <input type="color" id="customColor" aria-label="Custom colour">
+        </div>
+      </div>
+      <div class="field" id="posRow">
+        <span class="label" id="posLabel">Text position</span>
+        <div class="seg" id="posSeg" aria-labelledby="posLabel"></div>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2 class="eyebrow" id="ratioLabel">Canvas shape</h2>
+      <div class="seg" id="ratioSeg" aria-labelledby="ratioLabel"></div>
+    </section>
+
+    <section class="group">
+      <h2 class="eyebrow">Export</h2>
+      <div class="field">
+        <span class="label" id="formatLabel">Format</span>
+        <div class="seg" id="formatSeg" aria-labelledby="formatLabel"></div>
+      </div>
+      <div class="field" id="qualityRow">
+        <label for="quality">JPEG quality <output id="qualityOut" for="quality"></output></label>
+        <input type="range" id="quality" min="0.6" max="1" step="0.01">
+      </div>
+      <div class="field">
+        <label for="sizeSel">Size</label>
+        <select id="sizeSel">
+          <option value="0">Full resolution</option>
+          <option value="4096">4096 px long edge</option>
+          <option value="2048">2048 px long edge</option>
+          <option value="1080">1080 px long edge (Instagram)</option>
+        </select>
+      </div>
+      <p class="note">Everything runs on this device. Exported files don't carry the original EXIF or GPS data.</p>
+    </section>
+  </aside>
+
+  <!-- ===== Centre: preview + film strip ===== -->
+  <main class="stage-wrap">
+    <div class="stage" id="stage">
+      <canvas id="preview" aria-label="Framed photo preview"></canvas>
+      <div class="stage-hint" id="stageHint" hidden></div>
+      <div class="stage-empty" id="stageEmpty" hidden>
+        <h2>Open a photo to read its settings</h2>
+        <p>JPG, HEIC, PNG or TIFF. You can also drop files anywhere on this page.</p>
+        <label class="btn primary" for="fileInput">Open photos</label>
+      </div>
+      <div class="stage-msg" id="stageMsg" hidden>
+        <h2 id="stageMsgTitle"></h2>
+        <p id="stageMsgText"></p>
+      </div>
+    </div>
+    <div class="roll">
+      <div class="roll-head">
+        <div class="roll-nav">
+          <button class="iconbtn" type="button" id="prevBtn" aria-label="Previous photo">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M8 2 4 6l4 4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          </button>
+          <span class="counter" id="counter">00 / 00</span>
+          <button class="iconbtn" type="button" id="nextBtn" aria-label="Next photo">
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="m4 2 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+          </button>
+        </div>
+        <span class="out" id="outInfo"></span>
+        <button class="btn small" type="button" id="clearBtn">Clear roll</button>
+      </div>
+      <div class="filmstrip" id="filmstrip" aria-label="Loaded photos"></div>
+    </div>
+  </main>
+
+  <!-- ===== Right: metadata inspector ===== -->
+  <aside class="panel inspector" aria-label="Photo metadata">
+    <div class="insp-head">
+      <h2 class="file-name" id="fileName">No photo open</h2>
+      <div class="file-meta" id="fileMeta"></div>
+      <div class="pills" id="filePills"></div>
+    </div>
+
+    <div class="lcd" id="lcd" aria-label="Exposure settings">
+      <div class="lcd-cell"><span class="lcd-k">Aperture</span><span class="lcd-v" id="lcdAp">-</span></div>
+      <div class="lcd-cell"><span class="lcd-k">Shutter</span><span class="lcd-v" id="lcdSh">-</span></div>
+      <div class="lcd-cell"><span class="lcd-k">ISO</span><span class="lcd-v" id="lcdIso">-</span></div>
+      <div class="lcd-cell"><span class="lcd-k">Focal length</span><span class="lcd-v" id="lcdFl">-</span></div>
+      <div class="meter" id="meter" aria-label="Exposure compensation"></div>
+      <div class="lcd-foot" id="lcdFoot"></div>
+    </div>
+
+    <section class="group">
+      <h2 class="eyebrow">Histogram</h2>
+      <canvas id="histo" aria-label="RGB histogram"></canvas>
+      <div class="histo-foot" id="histoFoot"></div>
+    </section>
+
+    <div id="groups" style="display:flex;flex-direction:column;gap:22px"></div>
+
+    <details class="alltags" id="allTags">
+      <summary>Every tag in the file <span id="tagCount"></span></summary>
+      <input type="search" id="tagFilter" placeholder="Filter tags, for example Lens">
+      <div class="tag-wrap"><table class="tag-table"><tbody id="tagBody"></tbody></table></div>
+    </details>
+
+    <button class="btn" type="button" id="copyBtn">Copy settings as text</button>
+  </aside>
+</div>
+
+<div class="drop" id="drop" hidden>Drop photos to open</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  /* ==========================================================
+     1. SMALL HELPERS
+     ========================================================== */
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  // Save / load per-viewer preferences. Storage can be blocked, so never trust it.
+  function store(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ } }
+  function recall(key) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+
+  // Build a DOM element: el('dd', {class: 'x'}, 'text', childNode)
+  function el(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v == null || v === false) continue;
+      if (k === 'class') n.className = v; else n.setAttribute(k, v);
+    }
+    for (const kid of kids) {
+      if (kid == null || kid === false || kid === '') continue;
+      n.append(kid instanceof Node ? kid : String(kid));
+    }
+    return n;
+  }
+
+  function toast(msg) {
+    const t = el('div', { class: 'toast' }, msg);
+    $('toasts').append(t);
+    setTimeout(() => t.remove(), 4200);
+  }
+  const setStatus = (msg) => { $('status').textContent = msg || ''; };
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  /* ==========================================================
+     2. OPTIONS
+     ========================================================== */
+  // Frame styles. "border" is the label the size slider gets for that style.
+  const TEMPLATES = [
+    { id: 'signature', name: 'Signature', color: true,  border: 'Border',      position: false },
+    { id: 'classic',   name: 'Classic',   color: true,  border: 'Border',      position: false },
+    { id: 'gallery',   name: 'Gallery',   color: true,  border: 'Border',      position: false },
+    { id: 'backdrop',  name: 'Backdrop',  color: false, border: 'Padding',     position: false },
+    { id: 'overlay',   name: 'Overlay',   color: true,  border: 'Edge margin', position: true },
+    { id: 'film',      name: '35mm film', color: false, border: 'Side border', position: false },
+  ];
+
+  const FONTS = [
+    { id: 'Jost',               label: 'Jost',                         stack: '"Jost", "Century Gothic", sans-serif' },
+    { id: 'Century Gothic',     label: 'Century Gothic (if installed)', stack: '"Century Gothic", "Jost", sans-serif' },
+    { id: 'Montserrat',         label: 'Montserrat',                   stack: '"Montserrat", "Segoe UI", sans-serif' },
+    { id: 'Josefin Sans',       label: 'Josefin Sans',                 stack: '"Josefin Sans", "Century Gothic", sans-serif' },
+    { id: 'Archivo',            label: 'Archivo',                      stack: '"Archivo", "Segoe UI", sans-serif' },
+    { id: 'Playfair Display',   label: 'Playfair Display',             stack: '"Playfair Display", Georgia, serif' },
+    { id: 'Cormorant Garamond', label: 'Cormorant Garamond',           stack: '"Cormorant Garamond", Garamond, Georgia, serif' },
+    { id: 'IBM Plex Mono',      label: 'IBM Plex Mono',                stack: '"IBM Plex Mono", Consolas, monospace' },
+    { id: 'Bebas Neue',         label: 'Bebas Neue',                   stack: '"Bebas Neue", Impact, sans-serif' },
+  ];
+
+  // Which details can be printed on the frame
+  const FIELDS = [
+    { id: 'camera',   label: 'Camera' },
+    { id: 'lens',     label: 'Lens' },
+    { id: 'focal',    label: 'Focal length' },
+    { id: 'aperture', label: 'Aperture' },
+    { id: 'shutter',  label: 'Shutter' },
+    { id: 'iso',      label: 'ISO' },
+    { id: 'ev',       label: 'Exposure comp.' },
+    { id: 'date',     label: 'Date' },
+    { id: 'custom',   label: 'Custom text' },
+  ];
+
+  const RATIOS    = [['natural', 'Fit'], ['original', 'Photo ratio'], ['1:1', '1:1'], ['4:5', '4:5'], ['3:2', '3:2'], ['16:9', '16:9'], ['9:16', '9:16']];
+  const COLORS    = [['white', 'White'], ['black', 'Black'], ['tint', 'Tint'], ['custom', 'Custom']];
+  const POSITIONS = [['bl', 'Bottom left'], ['bc', 'Bottom'], ['br', 'Bottom right'], ['tl', 'Top left'], ['tr', 'Top right']];
+  const FORMATS   = [['jpg', 'JPEG'], ['png', 'PNG']];
+
+  const DEFAULTS = {
+    template: 'signature',
+    font: 'Jost',
+    textScale: 1,
+    border: { signature: 0, classic: 1, gallery: 1, backdrop: 1, overlay: 1, film: 1 },
+    colorMode: 'white',
+    customColor: '#1F3A5F',
+    position: 'bl',
+    ratio: 'natural',
+    fields: { camera: true, lens: true, focal: true, aperture: true, shutter: true, iso: true, ev: false, date: true, custom: false },
+    customText: '',
+    format: 'jpg',
+    quality: 0.92,
+    maxEdge: 0,
+  };
+
+  const SETTINGS_KEY = 'frameline.settings.v1';
+  const settings = loadSettings();
+
+  function loadSettings() {
+    const saved = recall(SETTINGS_KEY) || {};
+    const s = JSON.parse(JSON.stringify(DEFAULTS));
+    for (const key of Object.keys(s)) {
+      if (!(key in saved)) continue;
+      if (typeof s[key] === 'object') Object.assign(s[key], saved[key]);
+      else if (typeof saved[key] === typeof s[key]) s[key] = saved[key];
+    }
+    if (!TEMPLATES.some(t => t.id === s.template)) s.template = DEFAULTS.template;
+    if (!FONTS.some(f => f.id === s.font)) s.font = DEFAULTS.font;
+    return s;
+  }
+  const saveSettings = () => store(SETTINGS_KEY, settings);
+
+  // All loaded photos and which one is selected
+  const state = { photos: [], index: -1 };
+  const current = () => state.photos[state.index] || null;
+  let nextId = 1;
+
+  /* ==========================================================
+     3. FORMATTING CAMERA VALUES
+     ========================================================== */
+  const trimNum = (n) => String(Number(n.toFixed(1)));   // 5.60 -> "5.6", 10.0 -> "10"
+
+  const fmtAperture = (n) => 'f/' + trimNum(n);
+
+  // Shutter speed the way cameras show it: 1/2500, 1/3, 0.6, 2
+  function fmtShutter(t) {
+    if (!(t > 0)) return '';
+    if (t < 1) {
+      const d = 1 / t;
+      if (d >= 3 || Math.abs(d - Math.round(d)) < 0.05) return '1/' + Math.round(d);
+    }
+    return trimNum(t);
+  }
+
+  const fmtFocalNum = (f) => (f < 10 && Math.round(f) !== f ? f.toFixed(1) : String(Math.round(f)));
+  const fmtFocal = (f) => fmtFocalNum(f) + 'mm';
+
+  // Exposure compensation in thirds: +1/3, -2/3, +1 1/3
+  function fmtComp(v) {
+    if (Math.abs(v) < 0.01) return '±0 EV';
+    const sign = v > 0 ? '+' : '−';
+    const a = Math.abs(v);
+    const thirds = Math.round(a * 3);
+    if (Math.abs(a * 3 - thirds) < 0.06) {
+      const whole = Math.floor(thirds / 3), rem = thirds % 3;
+      const txt = (whole ? String(whole) : '') + (rem ? (whole ? ' ' : '') + rem + '/3' : '');
+      return sign + txt + ' EV';
+    }
+    return sign + trimNum(a) + ' EV';
+  }
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  // Date printed on frames: 2026.09.26 17:42
+  const stampDate = (d) => `${d.getFullYear()}.${pad2(d.getMonth() + 1)}.${pad2(d.getDate())}  ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  // Old film-camera date back imprint: '26 9 26
+  const filmDate = (d) => `'${String(d.getFullYear()).slice(2)} ${d.getMonth() + 1} ${d.getDate()}`;
+  const longDate = (d) => d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+
+  function fmtBytes(b) {
+    if (!(b > 0)) return '';
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(0) + ' KB';
+    return (b / 1024 / 1024).toFixed(1) + ' MB';
+  }
+
+  /* ==========================================================
+     4. TURNING RAW EXIF INTO FRIENDLY INFO
+     ========================================================== */
+  const EXIF_OPTIONS = {
+    tiff: true, exif: true, gps: true, xmp: true, iptc: true, ihdr: true,
+    icc: false, jfif: false, interop: false, ifd1: false,
+    makerNote: false, userComment: false,
+    translateKeys: true, translateValues: true, reviveValues: true, sanitize: true,
+    mergeOutput: true,
+  };
+
+  // Tidy brand names. First match wins, so longer names come first.
+  const BRANDS = [
+    ['om digital', 'OM System'], ['phase one', 'Phase One'], ['fujifilm', 'Fujifilm'], ['fuji', 'Fujifilm'],
+    ['canon', 'Canon'], ['nikon', 'Nikon'], ['sony', 'Sony'], ['olympus', 'Olympus'], ['panasonic', 'Panasonic'],
+    ['leica', 'Leica'], ['pentax', 'Pentax'], ['ricoh', 'Ricoh'], ['hasselblad', 'Hasselblad'], ['sigma', 'Sigma'],
+    ['apple', 'Apple'], ['google', 'Google'], ['samsung', 'Samsung'], ['xiaomi', 'Xiaomi'], ['huawei', 'Huawei'],
+    ['oneplus', 'OnePlus'], ['oppo', 'OPPO'], ['vivo', 'vivo'], ['honor', 'Honor'], ['motorola', 'Motorola'],
+    ['nokia', 'Nokia'], ['dji', 'DJI'], ['gopro', 'GoPro'], ['insta360', 'Insta360'], ['kodak', 'Kodak'],
+  ];
+  const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+
+  function brandFromMake(make) {
+    const m = make.toLowerCase();
+    for (const [key, name] of BRANDS) if (m.includes(key)) return name;
+    // Unknown maker: drop company suffixes and calm down ALL CAPS
+    let s = make.replace(/\b(corporation|corp\.?|co\.?,?\s*ltd\.?|ltd\.?|inc\.?|imaging|camera|company|ag|gmbh|optical)\b/gi, '')
+      .replace(/[,.\s]+$/, '').trim();
+    if (s.length > 3 && s === s.toUpperCase()) s = s[0] + s.slice(1).toLowerCase();
+    return s;
+  }
+
+  // Turn maker codes into the names people use: ILCE-7M3 -> α7 III, Z 6_2 -> Z 6II
+  function prettyModel(model) {
+    let m = model.trim();
+    let x = m.match(/^ILCE-(\d+)([A-Z]*?)(?:M(\d))?([A-Z]?)$/);
+    if (x) return `α${x[1]}${x[2]}${x[3] ? ' ' + ROMAN[+x[3]] : ''}${x[4]}`;
+    x = m.match(/^DSC-(RX\d+[A-Z]?)(?:M(\d))?([A-Z]?)$/);
+    if (x) return `${x[1]}${x[2] ? ' ' + ROMAN[+x[2]] : ''}${x[3]}`;
+    m = m.replace(/_(\d)$/, (_, d) => ROMAN[+d] || _);
+    return m;
+  }
+
+  // "Canon" + "Canon EOS 60D" -> "Canon EOS 60D" (the original site printed "Canon Canon EOS 60D")
+  function cameraName(make, model) {
+    const m = prettyModel(model || '');
+    const makeBrand = brandFromMake(make || '');
+    if (!m) return { name: makeBrand, brand: makeBrand };
+    const first = m.split(/\s+/)[0];
+    const hit = BRANDS.find(([key]) => first.toLowerCase().startsWith(key));
+    if (hit) return { name: (hit[1] + m.slice(first.length)).trim(), brand: hit[1] };
+    if (/^(iphone|ipad|ipod)/i.test(m)) return { name: m, brand: makeBrand || 'Apple' };
+    const makeWord = (make || '').trim().split(/\s+/)[0];
+    if (makeWord && m.toLowerCase().startsWith(makeWord.toLowerCase() + ' ')) {
+      return { name: (makeBrand + m.slice(makeWord.length)).trim(), brand: makeBrand };
+    }
+    return { name: makeBrand ? `${makeBrand} ${m}` : m, brand: makeBrand };
+  }
+
+  const isJunk = (s) => !s || /^[\s\-–—0.]*$/.test(s) || /^(unknown|none|n\/a)\b/i.test(s) || /^0(\.0)?\s*mm/i.test(s);
+
+  function lensName(raw, model) {
+    for (const v of [raw.LensModel, raw.Lens]) {
+      if (typeof v !== 'string' || isJunk(v.trim())) continue;
+      let s = v.trim();
+      // Phones repeat the phone name in the lens field: "iPhone 15 Pro back triple camera 6.765mm f/1.78"
+      if (model && s.startsWith(model + ' ')) {
+        s = s.slice(model.length + 1);
+        s = s[0].toUpperCase() + s.slice(1);
+      }
+      return s;
+    }
+    const range = lensRange(raw);
+    return range || '';
+  }
+
+  // LensInfo = [min focal, max focal, min f-number, max f-number]
+  function lensRange(raw) {
+    const li = raw.LensInfo || raw.LensSpecification;
+    if (!Array.isArray(li) || !(li[0] > 0)) return '';
+    const [f1, f2, n1, n2] = li.map(Number);
+    const focal = !f2 || f1 === f2 ? `${trimNum(f1)}mm` : `${trimNum(f1)}–${trimNum(f2)}mm`;
+    const ap = n1 > 0 ? (n2 > 0 && n2 !== n1 ? ` f/${trimNum(n1)}–${trimNum(n2)}` : ` f/${trimNum(n1)}`) : '';
+    return focal + ap;
+  }
+
+  function toDate(v) {
+    if (v instanceof Date) return isNaN(v) ? null : v;
+    if (typeof v === 'string') {
+      const m = v.match(/^(\d{4})[:\-](\d\d)[:\-](\d\d)[ T](\d\d):(\d\d)(?::(\d\d))?/);
+      if (m) return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    }
+    return null;
+  }
+
+  function num(v) {
+    if (Array.isArray(v)) v = v[0];
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return isFinite(n) ? n : null;
+  }
+  const str = (v) => (v == null ? '' : String(v).replace(/\0/g, '').trim());
+
+  const METERING = { Pattern: 'Evaluative / matrix', CenterWeightedAverage: 'Centre-weighted', Average: 'Average', Spot: 'Spot', MultiSpot: 'Multi-spot', Partial: 'Partial' };
+
+  function prettyFlash(v) {
+    if (typeof v === 'number') return (v & 1) ? 'Fired' : 'Did not fire';
+    const s = str(v);
+    if (!s) return '';
+    if (/no flash function/i.test(s)) return 'No flash';
+    if (/did not fire/i.test(s)) return 'Did not fire';
+    if (/fired/i.test(s)) return /red-eye/i.test(s) ? 'Fired (red-eye reduction)' : 'Fired';
+    return s;
+  }
+
+  // Sensor size from focal-plane resolution -> crop factor (Canon, Nikon and others write this)
+  function cropFromSensor(raw) {
+    const xr = num(raw.FocalPlaneXResolution), yr = num(raw.FocalPlaneYResolution);
+    const pw = num(raw.ExifImageWidth), ph = num(raw.ExifImageHeight);
+    if (!(xr > 0 && yr > 0 && pw > 0 && ph > 0)) return null;
+    const u = raw.FocalPlaneResolutionUnit;
+    const mmPerUnit = (u === 3 || /cm|cent/i.test(String(u))) ? 10 : (u === 4 || /mm|milli/i.test(String(u))) ? 1 : 25.4;
+    const diag = Math.hypot(pw / xr * mmPerUnit, ph / yr * mmPerUnit);
+    const crop = 43.27 / diag;   // 43.27mm = full-frame diagonal
+    return crop > 0.4 && crop < 12 ? crop : null;
+  }
+
+  function normalise(raw) {
+    const r = raw || {};
+    const make = str(r.Make), model = str(r.Model);
+    const cam = cameraName(make, model);
+    const info = {
+      make, model,
+      camera: cam.name,
+      brand: cam.brand,
+      lens: lensName(r, model),
+      lensRange: lensRange(r),
+      lensMake: str(r.LensMake),
+      focal: num(r.FocalLength),
+      focal35: num(r.FocalLengthIn35mmFormat),
+      fnumber: num(r.FNumber),
+      exposure: num(r.ExposureTime),
+      iso: num(r.ISO) ?? num(r.ISOSpeedRatings) ?? num(r.PhotographicSensitivity) ?? num(r.RecommendedExposureIndex),
+      ev: num(r.ExposureCompensation) ?? num(r.ExposureBiasValue),
+      program: str(r.ExposureProgram),
+      metering: METERING[str(r.MeteringMode)] || str(r.MeteringMode),
+      flash: prettyFlash(r.Flash),
+      wb: str(r.WhiteBalance),
+      scene: str(r.SceneCaptureType),
+      date: toDate(r.DateTimeOriginal) || toDate(r.CreateDate) || toDate(r.DateTimeDigitized) || toDate(r.DateTime) || toDate(r.ModifyDate),
+      offset: str(r.OffsetTimeOriginal || r.OffsetTime),
+      software: str(r.Software),
+      serial: str(r.BodySerialNumber || r.SerialNumber),
+      lensSerial: str(r.LensSerialNumber),
+      owner: str(r.CameraOwnerName || r.OwnerName),
+      artist: typeof r.Artist === 'string' ? str(r.Artist) : '',
+      copyright: typeof r.Copyright === 'string' ? str(r.Copyright) : '',
+      colorSpace: str(r.ColorSpace),
+      lat: num(r.latitude),
+      lon: num(r.longitude),
+      alt: num(r.GPSAltitude),
+    };
+    // Older files store aperture / shutter only as APEX values
+    if (info.fnumber == null && num(r.ApertureValue) != null) info.fnumber = Math.pow(2, num(r.ApertureValue) / 2);
+    if (info.exposure == null && num(r.ShutterSpeedValue) != null) info.exposure = Math.pow(2, -num(r.ShutterSpeedValue));
+    if (!(info.fnumber > 0)) info.fnumber = null;
+    if (!(info.exposure > 0)) info.exposure = null;
+    if (!(info.focal > 0)) info.focal = null;
+    if (!(info.iso > 0)) info.iso = null;
+
+    // 35mm-equivalent focal length
+    info.crop = null;
+    info.focal35Calculated = false;
+    if (info.focal && info.focal35 > 0) info.crop = info.focal35 / info.focal;
+    else if (info.focal) {
+      const crop = cropFromSensor(r);
+      if (crop) { info.crop = crop; info.focal35 = info.focal * crop; info.focal35Calculated = true; }
+    }
+    // Exposure value at ISO 100: how bright the scene was
+    if (info.fnumber && info.exposure && info.iso) {
+      info.ev100 = Math.log2(info.fnumber * info.fnumber / info.exposure) - Math.log2(info.iso / 100);
+    }
+    info.hasCameraData = !!(info.camera || info.fnumber || info.exposure || info.iso || info.focal);
+    return info;
+  }
+
+  /* ==========================================================
+     5. LOADING PHOTOS
+     ========================================================== */
+  // Decode a file with an <img>, which applies the EXIF rotation for us.
+  function decodeImage(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => resolve({ img, done: () => URL.revokeObjectURL(url) });
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      img.src = url;
+    });
+  }
+
+  function downscale(src, maxEdge) {
+    const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height;
+    const k = Math.min(1, maxEdge / Math.max(sw, sh));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(sw * k));
+    c.height = Math.max(1, Math.round(sh * k));
+    const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(src, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  const canvasToBlob = (c, type, q) => new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('encode'))), type, q));
+
+  function loadImg(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  // Histogram + average colour, from a small copy of the photo
+  function analyse(item, source) {
+    const c = downscale(source, 360);
+    const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    const r = new Uint32Array(256), g = new Uint32Array(256), b = new Uint32Array(256);
+    let sr = 0, sg = 0, sb = 0, lo = 0, hi = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const R = d[i], G = d[i + 1], B = d[i + 2];
+      r[R]++; g[G]++; b[B]++;
+      sr += R; sg += G; sb += B; n++;
+      const mx = Math.max(R, G, B);
+      if (mx >= 254) hi++;
+      if (mx <= 2) lo++;
+    }
+    item.histo = { r, g, b, lo: lo / n, hi: hi / n };
+    item.avg = [sr / n, sg / n, sb / n];
+  }
+
+  async function loadPhoto(file) {
+    const item = {
+      id: nextId++, name: file.name, size: file.size, type: file.type, file,
+      lastModified: file.lastModified, ov: { camera: '', lens: '' }, raw: {},
+    };
+    // 1. Metadata
+    if (window.exifr) {
+      try { item.raw = (await exifr.parse(file, EXIF_OPTIONS)) || {}; }
+      catch (e) { item.raw = {}; }
+    }
+    item.info = normalise(item.raw);
+    // 2. Pixels. We keep a ~2560px JPEG copy for previews; the full photo is re-read on export.
+    try {
+      const { img, done } = await decodeImage(file);
+      item.W = img.naturalWidth;
+      item.H = img.naturalHeight;
+      const small = downscale(img, 2560);
+      done();
+      analyse(item, small);
+      item.thumb = downscale(small, 240).toDataURL('image/jpeg', 0.8);
+      const blob = await canvasToBlob(small, 'image/jpeg', 0.92);
+      item.previewUrl = URL.createObjectURL(blob);
+      item.preview = await loadImg(item.previewUrl);
+      small.width = small.height = 0;
+    } catch (e) {
+      item.decodeError = true;
+      item.W = num(item.raw.ExifImageWidth) || num(item.raw.ImageWidth) || 0;
+      item.H = num(item.raw.ExifImageHeight) || num(item.raw.ImageHeight) || 0;
+    }
+    return item;
+  }
+
+  const looksLikePhoto = (f) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|avif|gif|heic|heif|tiff?|dng|cr2|nef|arw)$/i.test(f.name);
+
+  let loading = false;
+  async function addFiles(list) {
+    const files = [...(list || [])].filter(looksLikePhoto);
+    if (!files.length) { toast('Those files aren\'t photos. Choose JPG, HEIC, PNG or TIFF files.'); return; }
+    if (loading) { toast('Still reading the last batch. Try again in a moment.'); return; }
+    loading = true;
+    // The sample leaves as soon as real photos arrive
+    const sampleWasShown = state.photos.some(p => p.isSample);
+    if (sampleWasShown) state.photos = state.photos.filter(p => !p.isSample);
+    const first = state.photos.length;
+    try {
+      for (let i = 0; i < files.length; i++) {
+        setStatus(`Reading ${i + 1} of ${files.length}…`);
+        const item = await loadPhoto(files[i]);
+        state.photos.push(item);
+        if (i === 0) selectPhoto(first); else renderFilmstrip();
+      }
+      if (!window.exifr) toast('The metadata reader didn\'t load, so camera settings are missing. Check your connection and reload.');
+      const unreadable = state.photos.slice(first).filter(p => p.decodeError).length;
+      if (unreadable) toast(`${unreadable} file${unreadable > 1 ? 's' : ''} can't be previewed in this browser. Their metadata is still shown.`);
+    } finally {
+      loading = false;
+      setStatus('');
+      $('fileInput').value = '';
+      renderFilmstrip();
+    }
+  }
+
+  function removePhoto(i) {
+    const [gone] = state.photos.splice(i, 1);
+    if (gone && gone.previewUrl) URL.revokeObjectURL(gone.previewUrl);
+    if (!state.photos.length) state.index = -1;
+    else if (state.index >= state.photos.length) state.index = state.photos.length - 1;
+    else if (i < state.index) state.index--;
+    selectPhoto(state.index);
+  }
+
+  /* ==========================================================
+     6. SAMPLE PHOTO (drawn in code, clearly labelled)
+     ========================================================== */
+  function paintSample(w, h) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    let seed = 20260926;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+    // Dusk sky
+    const sky = g.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#1E355C');
+    sky.addColorStop(0.32, '#4F5A8C');
+    sky.addColorStop(0.5, '#B47A95');
+    sky.addColorStop(0.62, '#EE9D74');
+    sky.addColorStop(0.75, '#FBCB93');
+    sky.addColorStop(1, '#FBE0B4');
+    g.fillStyle = sky; g.fillRect(0, 0, w, h);
+
+    // Sun glow
+    const sx = w * 0.63, sy = h * 0.585;
+    const glow = g.createRadialGradient(sx, sy, 0, sx, sy, w * 0.5);
+    glow.addColorStop(0, 'rgba(255,246,220,1)');
+    glow.addColorStop(0.035, 'rgba(255,236,196,0.95)');
+    glow.addColorStop(0.16, 'rgba(255,196,140,0.35)');
+    glow.addColorStop(1, 'rgba(255,160,120,0)');
+    g.fillStyle = glow; g.fillRect(0, 0, w, h);
+
+    // Thin streaks of cloud
+    for (let i = 0; i < 9; i++) {
+      g.fillStyle = `rgba(255,${190 + Math.round(rnd() * 40)},${170 + Math.round(rnd() * 30)},${0.07 + rnd() * 0.09})`;
+      g.beginPath();
+      g.ellipse(rnd() * w, h * (0.16 + rnd() * 0.36), w * (0.12 + rnd() * 0.22), h * (0.006 + rnd() * 0.01), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    // Mountain ridges, far (hazy) to near (dark)
+    const ridges = [
+      { y: 0.62, amp: 0.075, col: '#C08C98' },
+      { y: 0.68, amp: 0.085, col: '#94698A' },
+      { y: 0.75, amp: 0.085, col: '#634B72' },
+      { y: 0.83, amp: 0.075, col: '#3A3152' },
+      { y: 0.92, amp: 0.06,  col: '#1D1A2C' },
+    ];
+    for (const r of ridges) {
+      const waves = [0, 1, 2, 3].map(() => ({ f: 0.8 + rnd() * 5, p: rnd() * 6.283, a: 0.3 + rnd() * 0.7 }));
+      const total = waves.reduce((s, v) => s + v.a, 0) + 0.3;
+      g.beginPath();
+      g.moveTo(0, h);
+      for (let x = 0; x <= w + 6; x += 6) {
+        const u = x / w;
+        let n = 0;
+        for (const wv of waves) n += Math.sin(u * wv.f * 6.283 + wv.p) * wv.a;
+        n += Math.abs(Math.sin(u * 31 + r.y * 40)) * 0.3;
+        g.lineTo(x, h * (r.y - r.amp * n / total));
+      }
+      g.lineTo(w, h);
+      g.closePath();
+      g.fillStyle = r.col;
+      g.fill();
+    }
+
+    // Fine film grain
+    const img = g.getImageData(0, 0, w, h);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (rnd() - 0.5) * 9;
+      d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+
+  function makeSample() {
+    const canvas = paintSample(2400, 1600);
+    const raw = {
+      Make: 'Canon', Model: 'Canon EOS 60D', LensModel: 'EF-S18-135mm f/3.5-5.6 IS',
+      FocalLength: 50, FNumber: 8, ExposureTime: 1 / 250, ISO: 100, ExposureCompensation: -1 / 3,
+      ExposureProgram: 'Aperture priority', MeteringMode: 'Pattern', Flash: 'Flash did not fire, compulsory flash mode',
+      WhiteBalance: 'Auto', ColorSpace: 'sRGB', DateTimeOriginal: new Date(2026, 8, 26, 17, 42, 10),
+      FocalPlaneXResolution: 5728.18, FocalPlaneYResolution: 5808.4, FocalPlaneResolutionUnit: 'inches',
+      ExifImageWidth: 5184, ExifImageHeight: 3456, LensInfo: [18, 135, 3.5, 5.6],
+    };
+    const item = {
+      id: nextId++, name: 'Sample photo', isSample: true, size: 0, type: 'image/jpeg', raw,
+      info: normalise(raw), ov: { camera: '', lens: '' },
+      W: canvas.width, H: canvas.height, preview: canvas, full: canvas,
+    };
+    analyse(item, canvas);
+    item.thumb = downscale(canvas, 240).toDataURL('image/jpeg', 0.8);
+    return item;
+  }
+
+  /* ==========================================================
+     7. DRAWING THE FRAMES
+     All sizes are worked out in full-resolution photo pixels,
+     then the whole canvas is scaled by k. So the preview is an
+     exact small copy of the export.
+     ========================================================== */
+  function hexToRgb(hex) {
+    const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [255, 255, 255];
+  }
+  function luminance(hex) {
+    const [r, g, b] = hexToRgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  const withAlpha = (hex, a) => { const [r, g, b] = hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; };
+
+  // A pale frame colour taken from the photo's average colour
+  function tintOf(item) {
+    const [r, g, b] = (item && item.avg ? item.avg : [200, 200, 200]).map(v => v / 255);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    let hue = 0;
+    const l = (mx + mn) / 2;
+    const sat = mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1));
+    if (mx !== mn) {
+      if (mx === r) hue = ((g - b) / (mx - mn)) % 6;
+      else if (mx === g) hue = (b - r) / (mx - mn) + 2;
+      else hue = (r - g) / (mx - mn) + 4;
+      hue *= 60; if (hue < 0) hue += 360;
+    }
+    const S = clamp(sat * 1.2, 0.08, 0.42), L = 0.9;
+    const C = (1 - Math.abs(2 * L - 1)) * S, X = C * (1 - Math.abs((hue / 60) % 2 - 1)), m = L - C / 2;
+    const [R, G, B] = hue < 60 ? [C, X, 0] : hue < 120 ? [X, C, 0] : hue < 180 ? [0, C, X] : hue < 240 ? [0, X, C] : hue < 300 ? [X, 0, C] : [C, 0, X];
+    return '#' + [R, G, B].map(v => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+  }
+
+  function frameColors(item, s) {
+    let bg = '#FFFFFF';
+    if (s.colorMode === 'black') bg = '#111112';
+    else if (s.colorMode === 'tint') bg = tintOf(item);
+    else if (s.colorMode === 'custom') bg = s.customColor;
+    const dark = luminance(bg) < 0.36;
+    return {
+      bg, dark,
+      ink: dark ? '#F5F4F0' : '#141414',
+      soft: dark ? 'rgba(245,244,240,0.64)' : 'rgba(20,20,20,0.58)',
+      rule: dark ? 'rgba(245,244,240,0.32)' : 'rgba(20,20,20,0.24)',
+    };
+  }
+  const BACKDROP_INK = { ink: '#FFFFFF', soft: 'rgba(255,255,255,0.74)', rule: 'rgba(255,255,255,0.4)' };
+  const FILM = { base: '#0E0D0C', hole: '#ECEAE4', print: '#F0A23B' };
+
+  // Everything the frame can print, after the "Show on frame" toggles
+  function frameText(item, s, frameNo) {
+    const i = item.info || {}, f = s.fields, ov = item.ov;
+    const camera = f.camera ? (ov.camera.trim() || i.camera || '') : '';
+    const lens = f.lens ? (ov.lens.trim() || i.lens || '') : '';
+    const parts = [];
+    if (f.focal && i.focal) parts.push(fmtFocal(i.focal));
+    if (f.aperture && i.fnumber) parts.push(fmtAperture(i.fnumber));
+    if (f.shutter && i.exposure) parts.push(fmtShutter(i.exposure) + 's');
+    if (f.iso && i.iso) parts.push('ISO ' + Math.round(i.iso));
+    if (f.ev && i.ev != null) parts.push(fmtComp(i.ev));
+    const brand = f.camera ? (ov.camera.trim() ? ov.camera.trim().split(/\s+/)[0] : (i.brand || '')) : '';
+    return {
+      camera, lens, parts, brand, frameNo,
+      date: f.date && i.date ? stampDate(i.date) : '',
+      filmDate: f.date && i.date ? filmDate(i.date) : '',
+      custom: f.custom ? (s.customText || '').trim() : '',
+    };
+  }
+
+  const fontStack = (id) => (FONTS.find(x => x.id === id) || FONTS[0]).stack;
+  function setFont(ctx, weight, size, s, spacingEm) {
+    ctx.font = `${weight} ${size}px ${fontStack(s.font)}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = spacingEm ? (spacingEm * size) + 'px' : '0px';
+  }
+  const textW = (ctx, text) => (text ? ctx.measureText(text).width : 0);
+
+  function roundRectPath(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawPhoto(ctx, src, x, y, w, h, radius) {
+    ctx.save();
+    if (radius) { roundRectPath(ctx, x, y, w, h, radius); ctx.clip(); }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(src, x, y, w, h);
+    ctx.restore();
+  }
+
+  // Blurred copy of the photo filling the whole canvas
+  function drawBlurCover(ctx, src, CW, CH, k, dim) {
+    const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height;
+    const tw = 64, th = Math.max(1, Math.round(64 * CH / CW));
+    const tiny = document.createElement('canvas');
+    tiny.width = tw; tiny.height = th;
+    const tg = tiny.getContext('2d');
+    tg.imageSmoothingQuality = 'high';
+    const sc = Math.max(tw / sw, th / sh);
+    tg.drawImage(src, (tw - sw * sc) / 2, (th - sh * sc) / 2, sw * sc, sh * sc);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    if ('filter' in ctx) ctx.filter = `blur(${Math.max(CW, CH) * k * 0.012}px)`;
+    ctx.drawImage(tiny, -CW * 0.06, -CH * 0.06, CW * 1.12, CH * 1.12);
+    ctx.restore();
+    ctx.fillStyle = `rgba(0,0,0,${dim})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
+
+  // Stacked, centred lines of text (used by Gallery, Backdrop and Overlay)
+  const LINE_BOX = 1.34;
+  const blockH = (lines) => lines.reduce((h, l) => h + l.size * LINE_BOX, 0);
+
+  function stackLines(t, fs, c) {
+    const lines = [];
+    if (t.camera) lines.push({ text: t.camera, size: fs, weight: 600, color: c.ink, spacing: 0.01 });
+    if (t.parts.length) lines.push({ text: t.parts.join('    '), size: fs * 0.7, weight: 400, color: c.ink, spacing: 0.05 });
+    const extra = [t.lens, t.date, t.custom].filter(Boolean).join('   ·   ');
+    if (extra) lines.push({ text: extra, size: fs * 0.56, weight: 400, color: c.soft, spacing: 0.04 });
+    return lines;
+  }
+
+  function fitLines(ctx, lines, maxW, s) {
+    let widest = 0;
+    for (const l of lines) { setFont(ctx, l.weight, l.size, s, l.spacing); widest = Math.max(widest, textW(ctx, l.text)); }
+    if (widest > maxW && widest > 0) { const k = maxW / widest; lines.forEach(l => { l.size *= k; }); }
+    return lines;
+  }
+
+  function drawLines(ctx, lines, x, top, align, s, shadow) {
+    ctx.save();
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    let y = top;
+    for (const l of lines) {
+      const box = l.size * LINE_BOX;
+      setFont(ctx, l.weight, l.size, s, l.spacing);
+      ctx.fillStyle = l.color;
+      if (shadow) { ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = l.size * 0.35 * shadow; }
+      ctx.fillText(l.text, x, y + box / 2);
+      y += box;
+    }
+    ctx.restore();
+  }
+
+  // ---------- The six frame styles ----------
+  // geometry() says how big the canvas is and where the photo goes.
+  // draw() paints the photo and the text on top of the background.
+  const TPL = {};
+
+  // Photo on top, a bar underneath: camera + lens on the left, settings + date on the right
+  TPL.signature = {
+    geometry(W, H, s) {
+      const u = Math.min(W, H);
+      const pad = u * 0.035 * s.border.signature;
+      const bar = u * 0.13 * s.textScale;
+      return { cw: W + pad * 2, ch: H + pad + bar, px: pad, py: pad, pad, bar };
+    },
+    draw(ctx, { W, H, g, src, t, s, c }) {
+      drawPhoto(ctx, src, g.px, g.py, W, H);
+      const bar = g.bar, mid = g.py + H + bar / 2;
+      const side = Math.max(g.pad, bar * 0.42);
+      const right1 = t.parts.join('   ');
+      const right2 = [t.date, t.custom].filter(Boolean).join('   ');
+      const gap = bar * 0.22;
+      let f1 = bar * 0.235, f2 = bar * 0.16, fb = bar * 0.3;
+
+      const measure = () => {
+        setFont(ctx, 600, f1, s); const l1 = textW(ctx, t.camera), r1 = textW(ctx, right1);
+        setFont(ctx, 400, f2, s); const l2 = textW(ctx, t.lens), r2 = textW(ctx, right2);
+        setFont(ctx, 700, fb, s, 0.01); const bw = textW(ctx, t.brand);
+        return { left: Math.max(l1, l2), right: Math.max(r1, r2), brand: bw };
+      };
+      const needed = (m) => m.left + (m.left ? bar * 0.5 : 0) + (m.brand ? m.brand + gap * 2 : 0) + m.right;
+      let m = measure();
+      const avail = g.cw - side * 2;
+      if (needed(m) > avail) {
+        const k = avail / needed(m);
+        f1 *= k; f2 *= k; fb *= k;
+        m = measure();
+      }
+      // Two lines are centred as a block around the bar's middle
+      const lineY = (hasTop, hasBottom) => {
+        if (!(hasTop && hasBottom)) return [mid, mid];
+        const block = f1 + f1 * 0.3 + f2;
+        const y1 = mid - block / 2 + f1 / 2;
+        return [y1, y1 + f1 / 2 + f1 * 0.3 + f2 / 2];
+      };
+      ctx.textBaseline = 'middle';
+
+      // Left: camera and lens
+      ctx.textAlign = 'left';
+      const [ly1, ly2] = lineY(t.camera, t.lens);
+      if (t.camera) { setFont(ctx, 600, f1, s); ctx.fillStyle = c.ink; ctx.fillText(t.camera, side, ly1); }
+      if (t.lens) { setFont(ctx, 400, f2, s); ctx.fillStyle = c.soft; ctx.fillText(t.lens, side, ly2); }
+
+      // Right: settings and date
+      const rx = g.cw - side;
+      ctx.textAlign = 'right';
+      const [ry1, ry2] = lineY(right1, right2);
+      if (right1) { setFont(ctx, 600, f1, s); ctx.fillStyle = c.ink; ctx.fillText(right1, rx, ry1); }
+      if (right2) { setFont(ctx, 400, f2, s); ctx.fillStyle = c.soft; ctx.fillText(right2, rx, ry2); }
+
+      // Brand name and a thin divider just left of the settings
+      if (t.brand) {
+        let bx = rx;
+        if (m.right) {
+          const dx = rx - m.right - gap;
+          const lw = Math.max(bar * 0.008, 0.5);
+          ctx.fillStyle = c.rule;
+          ctx.fillRect(dx - lw / 2, mid - bar * 0.2, lw, bar * 0.4);
+          bx = dx - gap;
+        }
+        setFont(ctx, 700, fb, s, 0.01);
+        ctx.fillStyle = c.ink;
+        ctx.fillText(t.brand, bx, mid);
+      }
+    },
+  };
+
+  // Like the original site: one centred line under the photo, split by thin bars
+  TPL.classic = {
+    geometry(W, H, s) {
+      const u = Math.min(W, H);
+      const pad = u * 0.03 * s.border.classic;
+      const fs = u * 0.04 * s.textScale;
+      const strip = fs * 3;
+      return { cw: W + pad * 2, ch: pad + H + strip, px: pad, py: pad, pad, fs, strip };
+    },
+    draw(ctx, { W, H, g, src, t, s, c }) {
+      drawPhoto(ctx, src, g.px, g.py, W, H);
+      const segs = [];
+      if (t.camera) segs.push({ text: t.camera, weight: 600 });
+      if (t.lens) segs.push({ text: t.lens, weight: 400 });
+      t.parts.forEach(p => segs.push({ text: p, weight: 400 }));
+      if (t.date) segs.push({ text: t.date, weight: 400 });
+      if (t.custom) segs.push({ text: t.custom, weight: 400 });
+      if (!segs.length) return;
+      let fs = g.fs;
+      const measure = () => {
+        let w = 0;
+        segs.forEach(sg => { setFont(ctx, sg.weight, fs, s); sg.w = textW(ctx, sg.text); w += sg.w; });
+        return w + (segs.length - 1) * fs * 1.3;
+      };
+      let total = measure();
+      const avail = g.cw - Math.max(g.pad, fs) * 2;
+      if (total > avail) { fs *= avail / total; total = measure(); }
+      let x = (g.cw - total) / 2;
+      const y = g.py + H + g.strip / 2;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      segs.forEach((sg, i) => {
+        if (i) {
+          const lw = Math.max(fs * 0.045, 0.5);
+          ctx.fillStyle = c.rule;
+          ctx.fillRect(x + fs * 0.65 - lw / 2, y - fs * 0.42, lw, fs * 0.84);
+          x += fs * 1.3;
+        }
+        setFont(ctx, sg.weight, fs, s);
+        ctx.fillStyle = c.ink;
+        ctx.fillText(sg.text, x, y);
+        x += sg.w;
+      });
+    },
+  };
+
+  // A museum mat: even border, centred caption in a deeper bottom margin
+  TPL.gallery = {
+    geometry(W, H, s, t, c) {
+      const u = Math.min(W, H);
+      const b = u * 0.06 * s.border.gallery;
+      const fs = u * 0.036 * s.textScale;
+      const lines = stackLines(t, fs, c);
+      const text = lines.length ? blockH(lines) + fs * 2.2 : 0;
+      return { cw: W + b * 2, ch: b + H + Math.max(text, b), px: b, py: b, b, fs };
+    },
+    draw(ctx, { W, H, g, src, t, s, c }) {
+      drawPhoto(ctx, src, g.px, g.py, W, H);
+      const lines = fitLines(ctx, stackLines(t, g.fs, c), g.cw - Math.max(g.b, g.fs) * 2, s);
+      if (!lines.length) return;
+      const top = g.py + H, area = g.ch - top;
+      drawLines(ctx, lines, g.cw / 2, top + (area - blockH(lines)) / 2, 'center', s);
+    },
+  };
+
+  // Photo floating on a blurred copy of itself, rounded corners and a soft shadow
+  TPL.backdrop = {
+    bg: 'blur',
+    geometry(W, H, s, t) {
+      const u = Math.min(W, H);
+      const p = u * 0.075 * Math.max(s.border.backdrop, 0.15);
+      const fs = u * 0.034 * s.textScale;
+      const lines = stackLines(t, fs, BACKDROP_INK);
+      const text = lines.length ? blockH(lines) + fs * 1.4 : 0;
+      return { cw: W + p * 2, ch: p + H + text + p * (lines.length ? 0.6 : 1), px: p, py: p, p, fs };
+    },
+    draw(ctx, { W, H, g, src, t, s, k }) {
+      const u = Math.min(W, H), r = u * 0.018;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = u * 0.05 * k;           // shadows ignore the scale, so apply k by hand
+      ctx.shadowOffsetY = u * 0.012 * k;
+      roundRectPath(ctx, g.px, g.py, W, H, r);
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.restore();
+      drawPhoto(ctx, src, g.px, g.py, W, H, r);
+      const lines = fitLines(ctx, stackLines(t, g.fs, BACKDROP_INK), g.cw - g.p * 2, s);
+      if (!lines.length) return;
+      const top = g.py + H, area = g.ch - top;
+      drawLines(ctx, lines, g.cw / 2, top + (area - blockH(lines)) / 2, 'center', s, k);
+    },
+  };
+
+  // Text printed straight onto the photo, with a soft shade behind it
+  TPL.overlay = {
+    bg: 'blur',
+    geometry(W, H, s) {
+      const u = Math.min(W, H);
+      return { cw: W, ch: H, px: 0, py: 0, m: u * 0.045 * Math.max(s.border.overlay, 0.2), fs: u * 0.036 * s.textScale };
+    },
+    draw(ctx, { W, H, g, src, t, s, c }) {
+      drawPhoto(ctx, src, 0, 0, W, H);
+      const ink = c.bg;                       // for Overlay the chosen colour is the text colour
+      const lightText = luminance(ink) >= 0.36;
+      const oc = { ink, soft: withAlpha(ink, 0.8), rule: withAlpha(ink, 0.4) };
+      const lines = fitLines(ctx, stackLines(t, g.fs, oc), W - g.m * 2, s);
+      if (!lines.length) return;
+      const pos = s.position, atTop = pos[0] === 't';
+      const bh = blockH(lines);
+      const y = atTop ? g.m : H - g.m - bh;
+      const align = pos[1] === 'l' ? 'left' : pos[1] === 'r' ? 'right' : 'center';
+      const x = align === 'left' ? g.m : align === 'right' ? W - g.m : W / 2;
+      const shadeH = bh + g.m * 2.4;
+      const grad = ctx.createLinearGradient(0, atTop ? 0 : H, 0, atTop ? shadeH : H - shadeH);
+      const shade = lightText ? '0,0,0' : '255,255,255';
+      grad.addColorStop(0, `rgba(${shade},0.45)`);
+      grad.addColorStop(1, `rgba(${shade},0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, atTop ? 0 : H - shadeH, W, shadeH);
+      drawLines(ctx, lines, x, y, align, s);
+    },
+  };
+
+  // A frame of 35mm film: sprocket holes and amber edge printing
+  TPL.film = {
+    bg: 'film',
+    geometry(W, H, s) {
+      const u = Math.min(W, H);
+      const side = u * 0.04 * s.border.film;
+      const band = u * 0.15;
+      return { cw: W + side * 2, ch: H + band * 2, px: side, py: band, side, band, fs: band * 0.17 * s.textScale };
+    },
+    draw(ctx, { W, H, g, src, t, s }) {
+      const { band, cw, ch } = g;
+      // Sprocket holes, lit from behind like a light table
+      const hw = band * 0.2, hh = band * 0.28, hr = hh * 0.22, top = band * 0.13;
+      const pitch = hw * 2.05;
+      const count = Math.max(1, Math.floor((cw - hw) / pitch));
+      const x0 = (cw - (count - 1) * pitch - hw) / 2;
+      ctx.fillStyle = FILM.hole;
+      for (let i = 0; i < count; i++) {
+        const x = x0 + i * pitch;
+        roundRectPath(ctx, x, top, hw, hh, hr); ctx.fill();
+        roundRectPath(ctx, x, ch - top - hh, hw, hh, hr); ctx.fill();
+      }
+      drawPhoto(ctx, src, g.px, g.py, W, H, Math.min(W, H) * 0.006);
+
+      // Edge print sits between the holes and the picture
+      const yTop = top + hh + (band - top - hh) / 2;
+      const yBot = ch - yTop;
+      const inset = Math.max(g.side, band * 0.3);
+      const tl = [t.camera, t.lens].filter(Boolean).join('    ').toUpperCase();
+      const tr = String(t.frameNo);
+      const bl = t.parts.join('    ');
+      const br = [t.custom, t.filmDate].filter(Boolean).join('    ');
+      let fs = g.fs;
+      const widest = () => {
+        setFont(ctx, 600, fs, s, 0.12);
+        return Math.max(textW(ctx, tl) + textW(ctx, tr) + fs * 3, textW(ctx, bl) + textW(ctx, br) + fs * 2);
+      };
+      const avail = cw - inset * 2;
+      if (widest() > avail) fs *= avail / widest();
+      setFont(ctx, 600, fs, s, 0.12);
+      ctx.fillStyle = FILM.print;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText(tl, inset, yTop);
+      ctx.fillText(bl, inset, yBot);
+      ctx.textAlign = 'right';
+      ctx.fillText(tr, cw - inset, yTop);
+      ctx.fillText(br, cw - inset, yBot);
+      // Little triangle before the frame number, as on real film
+      const tx = cw - inset - textW(ctx, tr) - fs * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(tx, yTop);
+      ctx.lineTo(tx - fs * 0.55, yTop - fs * 0.33);
+      ctx.lineTo(tx - fs * 0.55, yTop + fs * 0.33);
+      ctx.closePath();
+      ctx.fill();
+    },
+  };
+
+  function ratioValue(ratio, item) {
+    if (ratio === 'original') return item.W / item.H;
+    const m = /^(\d+):(\d+)$/.exec(ratio);
+    return m ? +m[1] / +m[2] : 0;
+  }
+
+  // Work out the final canvas size (frame + any padding to reach the chosen shape)
+  function layoutOf(item, s, frameNo) {
+    const tpl = TPL[s.template] || TPL.signature;
+    const c = frameColors(item, s);
+    const t = frameText(item, s, frameNo);
+    const g = tpl.geometry(item.W, item.H, s, t, c);
+    let CW = g.cw, CH = g.ch;
+    const r = ratioValue(s.ratio, item);
+    if (r) { if (CW / CH < r) CW = CH * r; else CH = CW / r; }
+    return { tpl, c, t, g, CW, CH, ox: (CW - g.cw) / 2, oy: (CH - g.ch) / 2 };
+  }
+
+  // Paint a finished frame into a canvas at scale k
+  function compose(item, s, k, src, frameNo, canvas) {
+    const L = layoutOf(item, s, frameNo);
+    canvas = canvas || document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(L.CW * k));
+    canvas.height = Math.max(1, Math.round(L.CH * k));
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    if (L.tpl.bg === 'blur') drawBlurCover(ctx, src, L.CW, L.CH, k, L.tpl === TPL.backdrop ? 0.3 : 0.4);
+    else { ctx.fillStyle = L.tpl.bg === 'film' ? FILM.base : L.c.bg; ctx.fillRect(0, 0, L.CW, L.CH); }
+    ctx.translate(L.ox, L.oy);
+    L.tpl.draw(ctx, { W: item.W, H: item.H, g: L.g, src, t: L.t, s, c: L.c, k });
+    return canvas;
+  }
+
+  /* ==========================================================
+     8. PREVIEW + STYLE THUMBNAILS
+     ========================================================== */
+  const previewCanvas = $('preview');
+  const stageEl = $('stage');
+  let renderQueued = false;
+
+  function queueRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => { renderQueued = false; renderPreview(); });
+  }
+
+  function renderPreview() {
+    const item = current();
+    $('stageEmpty').hidden = !!item;
+    const unreadable = !!(item && !item.preview);
+    $('stageMsg').hidden = !unreadable;
+    previewCanvas.hidden = !item || unreadable;
+    $('stageHint').hidden = true;
+    if (!item) { $('outInfo').textContent = ''; return; }
+    if (unreadable) {
+      const ext = (item.name.split('.').pop() || 'this').toUpperCase();
+      $('stageMsgTitle').textContent = `This browser can't show ${ext} images`;
+      $('stageMsgText').textContent = 'The camera settings are still listed. To add a frame, convert the file to JPEG first.';
+      $('outInfo').textContent = '';
+      return;
+    }
+    if (!item.info.hasCameraData && !item.ov.camera && !item.isSample) {
+      $('stageHint').textContent = 'No camera settings in this file. Type a camera name on the left, or turn on custom text.';
+      $('stageHint').hidden = false;
+    }
+    const L = layoutOf(item, settings, state.index + 1);
+    const bw = stageEl.clientWidth - 24;
+    let bh = stageEl.clientHeight - 24;
+    // On phones the stage shrinks to the photo's height instead of leaving empty space
+    if (window.matchMedia('(max-width: 759px)').matches) {
+      bh = Math.min(window.innerHeight * 0.7, (bw / L.CW) * L.CH);
+      stageEl.style.height = Math.round(bh + 24) + 'px';
+    } else stageEl.style.height = '';
+    if (bw < 20 || bh < 20) return;
+    const fit = Math.min(bw / L.CW, bh / L.CH);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    compose(item, settings, fit * dpr, item.preview, state.index + 1, previewCanvas);
+    previewCanvas.style.width = (L.CW * fit) + 'px';
+    previewCanvas.style.height = (L.CH * fit) + 'px';
+    // Tell people how big the export will be
+    let k = settings.maxEdge > 0 ? Math.min(1, settings.maxEdge / Math.max(L.CW, L.CH)) : 1;
+    k = Math.min(k, exportLimit(L));
+    $('outInfo').textContent = `Export ${Math.round(L.CW * k)} × ${Math.round(L.CH * k)} px · ${settings.format === 'png' ? 'PNG' : 'JPEG'}`;
+  }
+
+  // Browsers cap canvas size, so very large exports are scaled to fit
+  const exportLimit = (L) => Math.min(16000 / L.CW, 16000 / L.CH, Math.sqrt(200e6 / (L.CW * L.CH)), 1);
+
+  const tplButtons = [];
+  let thumbTimer = 0;
+  function queueThumbs() { clearTimeout(thumbTimer); thumbTimer = setTimeout(renderThumbs, 140); }
+
+  function renderThumbs() {
+    const item = current();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (const tb of tplButtons) {
+      if (!item || !item.preview) { tb.canvas.width = tb.canvas.height = 0; continue; }
+      const s2 = Object.assign({}, settings, { template: tb.id });
+      const L = layoutOf(item, s2, state.index + 1);
+      const bw = tb.box.clientWidth - 6, bh = tb.box.clientHeight - 6;
+      if (bw < 10) continue;
+      const fit = Math.min(bw / L.CW, bh / L.CH);
+      compose(item, s2, fit * dpr, item.preview, state.index + 1, tb.canvas);
+      tb.canvas.style.width = (L.CW * fit) + 'px';
+      tb.canvas.style.height = (L.CH * fit) + 'px';
+    }
+  }
+
+  // Google fonts must finish loading before canvas can use them
+  const fontLoads = {};
+  function ensureFont(id) {
+    if (!fontLoads[id]) {
+      const specs = ['400', '600', '700'].map(w => `${w} 40px "${id}"`);
+      fontLoads[id] = document.fonts
+        ? Promise.all(specs.map(sp => document.fonts.load(sp).catch(() => null)))
+        : Promise.resolve();
+    }
+    return fontLoads[id];
+  }
+
+  /* ==========================================================
+     9. EXPORT
+     ========================================================== */
+  // In the Claude viewer, files are offered through the downloads capability.
+  // Opened as a normal web page, a regular download link is used instead.
+  const inClaude = !!(window.claude && typeof window.claude.use === 'function');
+  const downloadsReady = inClaude ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+
+  async function deliver(filename, blob) {
+    try {
+      const api = await downloadsReady;
+      if (api) {
+        await api.save({ filename, data: blob });
+        toast(`Saved ${filename}`);
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = el('a', { href: url, download: filename });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 8000);
+      toast(inClaude ? `Download requested for ${filename}. This view may block it.` : `Downloaded ${filename}`);
+    } catch (err) {
+      const code = err && err.code;
+      if (code === 'declined') toast('Save cancelled.');
+      else if (code === 'rate_limited') toast('A save prompt is already open. Finish that one first.');
+      else if (code === 'too_large') toast('That file is too big to save here. Pick a smaller size under Export.');
+      else if (code === 'rejected_extension' || code === 'extension_not_enabled') toast('This file type can\'t be saved here. Export photos one at a time instead.');
+      else toast('Saving isn\'t available in this view.');
+    }
+  }
+
+  function exportName(item) {
+    const base = item.isSample ? 'sample-photo' : item.name.replace(/\.[^.]+$/, '');
+    return `${base}-frameline.${settings.format === 'png' ? 'png' : 'jpg'}`;
+  }
+
+  // Render one photo at full size and encode it
+  async function renderExport(item, index) {
+    let src = item.full || null, done = () => {};
+    if (!src) {
+      const d = await decodeImage(item.file);
+      src = d.img; done = d.done;
+    }
+    try {
+      const L = layoutOf(item, settings, index + 1);
+      let k = settings.maxEdge > 0 ? Math.min(1, settings.maxEdge / Math.max(L.CW, L.CH)) : 1;
+      k = Math.min(k, exportLimit(L));
+      const canvas = compose(item, settings, k, src, index + 1);
+      const png = settings.format === 'png';
+      const blob = await canvasToBlob(canvas, png ? 'image/png' : 'image/jpeg', settings.quality);
+      canvas.width = canvas.height = 0;
+      return blob;
+    } finally {
+      done();
+    }
+  }
+
+  let exporting = false;
+  function setExporting(on) {
+    exporting = on;
+    $('exportBtn').disabled = on;
+    $('exportAllBtn').disabled = on;
+  }
+
+  async function exportCurrent() {
+    const item = current();
+    if (!item) { toast('Open a photo first.'); return; }
+    if (!item.preview) { toast('This file can\'t be framed in this browser. Convert it to JPEG first.'); return; }
+    if (exporting) return;
+    setExporting(true);
+    setStatus('Rendering full size…');
+    try {
+      await ensureFont(settings.font);
+      const blob = await renderExport(item, state.index);
+      setStatus('');
+      await deliver(exportName(item), blob);
+    } catch (e) {
+      toast('Export failed. The photo may be too large for this browser. Try a smaller size under Export.');
+    } finally {
+      setStatus('');
+      setExporting(false);
+    }
+  }
+
+  async function exportAll() {
+    const items = state.photos.filter(p => p.preview);
+    if (!items.length) { toast('Open some photos first.'); return; }
+    if (typeof JSZip === 'undefined') { toast('The ZIP tool didn\'t load. Check your connection and reload the page.'); return; }
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await ensureFont(settings.font);
+      const zip = new JSZip();
+      const used = new Set();
+      for (let n = 0; n < items.length; n++) {
+        setStatus(`Rendering ${n + 1} of ${items.length}…`);
+        const item = items[n];
+        const blob = await renderExport(item, state.photos.indexOf(item));
+        let name = exportName(item), extra = 2;
+        while (used.has(name)) name = exportName(item).replace(/(\.\w+)$/, `-${extra++}$1`);
+        used.add(name);
+        zip.file(name, blob);
+      }
+      setStatus('Packing ZIP…');
+      const zblob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+      setStatus('');
+      await deliver(`frameline-${items.length}-photo${items.length > 1 ? 's' : ''}.zip`, zblob);
+    } catch (e) {
+      toast('Export failed part-way. Try a smaller size under Export, or fewer photos at once.');
+    } finally {
+      setStatus('');
+      setExporting(false);
+    }
+  }
+
+  /* ==========================================================
+     10. INSPECTOR (right panel)
+     ========================================================== */
+  function setLcd(id, value, unit) {
+    const n = $(id);
+    n.textContent = '';
+    if (value == null || value === '') { n.textContent = '--'; n.classList.add('na'); return; }
+    n.classList.remove('na');
+    n.append(value);
+    if (unit) n.append(el('small', {}, unit));
+  }
+
+  function renderMeter(ev) {
+    const m = $('meter');
+    m.textContent = '';
+    m.hidden = ev == null;
+    if (ev == null) return;
+    const labels = ['-3', '2', '1', '0', '1', '2', '+3'];
+    for (let i = 0; i <= 18; i++) {
+      const pct = (i / 18) * 100 + '%';
+      m.append(el('i', { class: i % 3 === 0 ? 'major' : null, style: `left:${pct}` }));
+      if (i % 3 === 0) m.append(el('span', { style: `left:${pct}` }, labels[i / 3]));
+    }
+    const pos = ((clamp(ev, -3, 3) + 3) / 6) * 100;
+    m.append(el('div', { class: 'mark', style: `left:${pos}%`, title: fmtComp(ev) }));
+  }
+
+  function kvGroup(title, rows) {
+    rows = rows.filter(r => r[1] != null && r[1] !== '');
+    if (!rows.length) return null;
+    const dl = el('dl', { class: 'kv' });
+    rows.forEach(([k, v]) => dl.append(el('dt', {}, k), el('dd', {}, v)));
+    return el('section', { class: 'group' }, el('h2', { class: 'eyebrow' }, title), dl);
+  }
+
+  function withSub(main, sub) {
+    const f = document.createDocumentFragment();
+    f.append(main);
+    if (sub) f.append(' ', el('span', { class: 'sub' }, sub));
+    return f;
+  }
+
+  function renderInspector() {
+    const item = current();
+    const groups = $('groups');
+    groups.textContent = '';
+    $('filePills').textContent = '';
+    if (!item) {
+      $('fileName').textContent = 'No photo open';
+      $('fileMeta').textContent = 'Open a photo to see its camera settings.';
+      ['lcdAp', 'lcdSh', 'lcdIso', 'lcdFl'].forEach(id => setLcd(id, null));
+      renderMeter(null);
+      $('lcdFoot').textContent = '';
+      $('histoFoot').textContent = '';
+      $('tagBody').textContent = '';
+      $('tagCount').textContent = '';
+      drawHistogram();
+      return;
+    }
+    const i = item.info;
+
+    // Header
+    $('fileName').textContent = item.name;
+    const mp = item.W && item.H ? (item.W * item.H / 1e6).toFixed(1) + ' MP' : '';
+    $('fileMeta').textContent = [item.W && item.H ? `${item.W} × ${item.H}` : '', mp, fmtBytes(item.size)].filter(Boolean).join(' · ');
+    const pills = $('filePills');
+    if (item.isSample) pills.append(el('span', { class: 'pill accent' }, 'Sample settings. Open a photo to read yours.'));
+    if (i.lat != null && i.lon != null) pills.append(el('span', { class: 'pill warn' }, 'Location saved in file'));
+    if (!i.hasCameraData) pills.append(el('span', { class: 'pill' }, 'No camera data'));
+
+    // LCD readout
+    setLcd('lcdAp', i.fnumber ? fmtAperture(i.fnumber) : null);
+    setLcd('lcdSh', i.exposure ? fmtShutter(i.exposure) : null, i.exposure ? 's' : '');
+    setLcd('lcdIso', i.iso ? String(Math.round(i.iso)) : null);
+    setLcd('lcdFl', i.focal ? fmtFocalNum(i.focal) : null, i.focal ? 'mm' : '');
+    renderMeter(i.ev);
+    const foot = $('lcdFoot');
+    foot.textContent = '';
+    if (i.ev100 != null) foot.append(el('span', {}, el('b', {}, 'EV ' + i.ev100.toFixed(1)), ' at ISO 100'));
+    if (i.program) foot.append(el('span', {}, i.program));
+    if (i.ev != null) foot.append(el('span', {}, fmtComp(i.ev)));
+    if (i.focal35 && i.crop && Math.abs(i.crop - 1) > 0.05) foot.append(el('span', {}, `≈${Math.round(i.focal35)}mm full-frame`));
+
+    // Histogram
+    drawHistogram();
+    const h = item.histo;
+    const hf = $('histoFoot');
+    hf.textContent = '';
+    if (h) {
+      const pct = (v) => (v * 100 < 0.1 ? '0' : (v * 100).toFixed(1)) + '%';
+      hf.append(
+        el('span', { class: h.lo > 0.01 ? 'hot' : null }, 'Shadows clipped ' + pct(h.lo)),
+        el('span', { class: h.hi > 0.01 ? 'hot' : null }, 'Highlights clipped ' + pct(h.hi)),
+      );
+    } else hf.append(el('span', {}, 'No preview, so no histogram.'));
+
+    // Detail groups
+    let eq = '';
+    if (i.focal35 && i.crop && Math.abs(i.crop - 1) > 0.05) {
+      eq = withSub(`${Math.round(i.focal35)}mm`, `${i.focal35Calculated ? 'calculated, ' : ''}crop ${i.crop.toFixed(2)}×`);
+    } else if (i.focal35) eq = `${Math.round(i.focal35)}mm`;
+
+    const offsetTxt = i.offset ? ` (UTC${i.offset})` : '';
+    let where = '';
+    if (i.lat != null && i.lon != null) {
+      const f = document.createDocumentFragment();
+      f.append(`${i.lat.toFixed(5)}, ${i.lon.toFixed(5)} `);
+      f.append(el('a', { href: `https://www.openstreetmap.org/?mlat=${i.lat}&mlon=${i.lon}#map=15/${i.lat}/${i.lon}`, target: '_blank', rel: 'noopener' }, 'Map ↗'));
+      where = f;
+    }
+    const list = [
+      kvGroup('Camera', [
+        ['Camera', i.camera],
+        ['Make', i.make],
+        ['Model', i.model !== i.camera ? i.model : ''],
+        ['Serial no.', i.serial],
+        ['Owner', i.owner],
+        ['Software', i.software],
+      ]),
+      kvGroup('Lens', [
+        ['Lens', i.lens],
+        ['Lens maker', i.lensMake],
+        ['Zoom range', i.lensRange && i.lensRange !== i.lens ? i.lensRange : ''],
+        ['Focal length', i.focal ? fmtFocal(i.focal) : ''],
+        ['35mm equiv.', eq],
+        ['Lens serial', i.lensSerial],
+      ]),
+      kvGroup('Exposure', [
+        ['Mode', i.program],
+        ['Aperture', i.fnumber ? fmtAperture(i.fnumber) : ''],
+        ['Shutter', i.exposure ? fmtShutter(i.exposure) + ' s' : ''],
+        ['ISO', i.iso ? String(Math.round(i.iso)) : ''],
+        ['Compensation', i.ev != null ? fmtComp(i.ev) : ''],
+        ['Metering', i.metering],
+        ['Flash', i.flash],
+        ['White balance', i.wb],
+        ['Scene type', i.scene],
+      ]),
+      kvGroup('When and where', [
+        ['Taken', i.date ? longDate(i.date) + offsetTxt : ''],
+        ['File saved', item.lastModified ? longDate(new Date(item.lastModified)) : ''],
+        ['Location', where],
+        ['Altitude', i.alt != null ? `${Math.round(i.alt)} m` : ''],
+      ]),
+      kvGroup('Image', [
+        ['Pixels', item.W && item.H ? `${item.W} × ${item.H}` : ''],
+        ['Megapixels', mp],
+        ['File size', fmtBytes(item.size)],
+        ['Type', (item.type || '').replace('image/', '').toUpperCase()],
+        ['Colour space', i.colorSpace],
+      ]),
+      kvGroup('Rights', [
+        ['Artist', i.artist],
+        ['Copyright', i.copyright],
+      ]),
+    ].filter(Boolean);
+    list.forEach(g => groups.append(g));
+    if (!list.length) groups.append(el('p', { class: 'insp-empty' }, 'This file has no camera metadata. Screenshots and photos saved by some apps lose it.'));
+
+    renderTagTable(item);
+  }
+
+  function fmtTagValue(v) {
+    if (v == null) return '';
+    if (v instanceof Date) return isNaN(v) ? '' : v.toLocaleString();
+    if (v instanceof ArrayBuffer || ArrayBuffer.isView(v)) return `(binary, ${v.byteLength} bytes)`;
+    if (Array.isArray(v)) return v.length > 12 ? `[${v.length} values]` : v.map(fmtTagValue).join(', ');
+    if (typeof v === 'number') return Number.isInteger(v) ? String(v) : String(+v.toPrecision(6));
+    if (typeof v === 'object') {
+      try { const s = JSON.stringify(v); return s.length > 160 ? s.slice(0, 157) + '…' : s; } catch (e) { return '[object]'; }
+    }
+    const s = String(v);
+    return s.length > 240 ? s.slice(0, 237) + '…' : s;
+  }
+
+  function renderTagTable(item) {
+    const body = $('tagBody');
+    body.textContent = '';
+    const keys = Object.keys(item.raw || {}).sort((a, b) => a.localeCompare(b));
+    $('tagCount').textContent = `(${keys.length})`;
+    for (const k of keys) {
+      const v = fmtTagValue(item.raw[k]);
+      body.append(el('tr', { 'data-q': (k + ' ' + v).toLowerCase() }, el('td', {}, k), el('td', {}, v)));
+    }
+    if (!keys.length) body.append(el('tr', {}, el('td', { colspan: '2' }, 'No tags found.')));
+    filterTags();
+  }
+
+  function filterTags() {
+    const q = $('tagFilter').value.trim().toLowerCase();
+    $('tagBody').querySelectorAll('tr[data-q]').forEach(tr => { tr.hidden = !!q && !tr.dataset.q.includes(q); });
+  }
+
+  function isDarkTheme() { return luminance(cssVar('--bg') || '#ffffff') < 0.2; }
+
+  function drawHistogram() {
+    const cv = $('histo');
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    // quarter lines
+    g.fillStyle = cssVar('--line') || '#ccc';
+    for (let q = 1; q < 4; q++) g.fillRect(Math.round(w * q / 4), 0, 1, h);
+    const item = current();
+    if (!item || !item.histo) return;
+    const H = item.histo;
+    let max = 1;
+    for (const arr of [H.r, H.g, H.b]) for (let i = 2; i < 254; i++) max = Math.max(max, arr[i]);
+    const y = (v) => h - Math.min(1, Math.sqrt(v / max)) * (h - 6);
+    const plot = (arr, color) => {
+      g.beginPath();
+      g.moveTo(0, h);
+      for (let i = 0; i < 256; i++) g.lineTo((i / 255) * w, y(arr[i]));
+      g.lineTo(w, h);
+      g.closePath();
+      g.fillStyle = color;
+      g.fill();
+    };
+    const dark = isDarkTheme();
+    g.globalCompositeOperation = dark ? 'lighter' : 'multiply';
+    if (dark) { plot(H.r, 'rgba(225,70,70,0.6)'); plot(H.g, 'rgba(70,190,100,0.6)'); plot(H.b, 'rgba(80,130,255,0.65)'); }
+    else { plot(H.r, 'rgba(255,110,110,0.8)'); plot(H.g, 'rgba(110,215,135,0.8)'); plot(H.b, 'rgba(115,155,255,0.8)'); }
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  function summaryText(item) {
+    const i = item.info;
+    const lines = [item.name];
+    const gear = [item.ov.camera.trim() || i.camera, item.ov.lens.trim() || i.lens].filter(Boolean).join(' · ');
+    if (gear) lines.push(gear);
+    const exp = [
+      i.focal ? fmtFocal(i.focal) + (i.focal35 && i.crop && Math.abs(i.crop - 1) > 0.05 ? ` (≈${Math.round(i.focal35)}mm full-frame)` : '') : '',
+      i.fnumber ? fmtAperture(i.fnumber) : '',
+      i.exposure ? fmtShutter(i.exposure) + 's' : '',
+      i.iso ? 'ISO ' + Math.round(i.iso) : '',
+      i.ev != null && Math.abs(i.ev) > 0.01 ? fmtComp(i.ev) : '',
+    ].filter(Boolean).join(' · ');
+    if (exp) lines.push(exp);
+    if (i.date) lines.push('Taken ' + longDate(i.date));
+    return lines.join('\n');
+  }
+
+  async function copySummary() {
+    const item = current();
+    if (!item) return;
+    const text = summaryText(item);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied the settings.');
+    } catch (e) {
+      // Fallback for views that block the clipboard API
+      const ta = el('textarea', { style: 'position:fixed;opacity:0' });
+      ta.value = text;
+      document.body.append(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+      ta.remove();
+      toast(ok ? 'Copied the settings.' : 'Copying is blocked here. Select the text in the panel instead.');
+    }
+  }
+
+  /* ==========================================================
+     11. FILM STRIP + SELECTION
+     ========================================================== */
+  function renderFilmstrip() {
+    const strip = $('filmstrip');
+    strip.textContent = '';
+    state.photos.forEach((p, i) => {
+      const pick = el('button', { class: 'frame-pick', type: 'button', 'aria-label': `Show photo ${i + 1}, ${p.name}` },
+        p.thumb ? el('img', { src: p.thumb, alt: '' }) : el('span', { class: 'nothumb' }, (p.name.split('.').pop() || '').toUpperCase()));
+      pick.addEventListener('click', () => selectPhoto(i));
+      const rm = el('button', { class: 'frame-rm', type: 'button', 'aria-label': `Remove ${p.name}` }, '×');
+      rm.addEventListener('click', (e) => { e.stopPropagation(); removePhoto(i); });
+      const no = el('span', { class: 'frame-no' }, `▸ ${pad2(i + 1)}${p.isSample ? '  SAMPLE' : ''}`);
+      strip.append(el('div', { class: 'frame', 'aria-current': i === state.index ? 'true' : null }, pick, no, rm));
+    });
+    strip.append(el('label', { class: 'frame-add', for: 'fileInput' }, '+ Add'));
+    const n = state.photos.length;
+    $('counter').textContent = n ? `${pad2(state.index + 1)} / ${pad2(n)}` : '00 / 00';
+    $('prevBtn').disabled = state.index <= 0;
+    $('nextBtn').disabled = state.index < 0 || state.index >= n - 1;
+    $('clearBtn').disabled = !n;
+    const cur = strip.querySelector('.frame[aria-current="true"]');
+    if (cur && cur.scrollIntoView) cur.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  function selectPhoto(i) {
+    state.index = state.photos.length ? clamp(i, 0, state.photos.length - 1) : -1;
+    clearArmed = false;
+    $('clearBtn').textContent = 'Clear roll';
+    renderFilmstrip();
+    syncControls();
+    renderInspector();
+    queueRender();
+    queueThumbs();
+  }
+
+  /* ==========================================================
+     12. CONTROLS (left panel)
+     ========================================================== */
+  function buildSeg(container, options, onPick) {
+    container.textContent = '';
+    options.forEach(([value, label]) => {
+      const b = el('button', { type: 'button', 'data-value': value, 'aria-pressed': 'false' });
+      if (container.id === 'colorSeg') b.append(el('span', { class: 'swatch', 'data-swatch': value }));
+      b.append(label);
+      b.addEventListener('click', () => onPick(value));
+      container.append(b);
+    });
+  }
+  function syncSeg(container, value) {
+    container.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.value === String(value))));
+  }
+
+  // Something changed: save, redraw preview and thumbnails
+  function changed(thumbs = true) {
+    saveSettings();
+    syncControls();
+    queueRender();
+    if (thumbs) queueThumbs();
+  }
+
+  function buildControls() {
+    // Frame styles
+    const grid = $('tplGrid');
+    TEMPLATES.forEach(t => {
+      const canvas = el('canvas', { 'aria-hidden': 'true' });
+      const box = el('div', { class: 'tpl-box' }, canvas);
+      const btn = el('button', { class: 'tpl', type: 'button', role: 'radio', 'aria-checked': 'false' }, box, el('span', { class: 'tpl-name' }, t.name));
+      btn.addEventListener('click', () => { settings.template = t.id; changed(false); });
+      grid.append(btn);
+      tplButtons.push({ id: t.id, btn, canvas, box });
+    });
+    // Arrow keys move between styles, like a radio group
+    grid.addEventListener('keydown', (e) => {
+      const idx = TEMPLATES.findIndex(t => t.id === settings.template);
+      let to = -1;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') to = (idx + 1) % TEMPLATES.length;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') to = (idx - 1 + TEMPLATES.length) % TEMPLATES.length;
+      if (to < 0) return;
+      e.preventDefault();
+      settings.template = TEMPLATES[to].id;
+      changed(false);
+      tplButtons[to].btn.focus();
+    });
+
+    // Field toggles
+    const chips = $('fieldChips');
+    FIELDS.forEach(f => {
+      const input = el('input', { type: 'checkbox', id: 'f-' + f.id });
+      input.addEventListener('change', () => {
+        settings.fields[f.id] = input.checked;
+        changed();
+        if (f.id === 'custom' && input.checked) $('customText').focus();
+      });
+      chips.append(el('label', { class: 'chip' }, input, el('span', {}, f.label)));
+    });
+    $('customText').addEventListener('input', (e) => { settings.customText = e.target.value; changed(); });
+
+    // Per-photo names
+    $('ovCamera').addEventListener('input', (e) => { const it = current(); if (it) { it.ov.camera = e.target.value; queueRender(); queueThumbs(); } });
+    $('ovLens').addEventListener('input', (e) => { const it = current(); if (it) { it.ov.lens = e.target.value; queueRender(); queueThumbs(); } });
+    $('applyAllBtn').addEventListener('click', () => {
+      const it = current();
+      if (!it) return;
+      state.photos.forEach(p => { p.ov.camera = it.ov.camera; p.ov.lens = it.ov.lens; });
+      toast(it.ov.camera || it.ov.lens ? `Names copied to all ${state.photos.length} photos.` : 'Every photo now uses the names from its own file.');
+    });
+
+    // Font
+    const fontSel = $('fontSel');
+    FONTS.forEach(f => fontSel.append(el('option', { value: f.id, style: `font-family:${f.stack}` }, f.label)));
+    fontSel.addEventListener('change', () => {
+      settings.font = fontSel.value;
+      changed();
+      ensureFont(settings.font).then(() => { queueRender(); queueThumbs(); });
+    });
+
+    // Sliders
+    $('textScale').addEventListener('input', (e) => { settings.textScale = +e.target.value; changed(); });
+    $('borderSize').addEventListener('input', (e) => { settings.border[settings.template] = +e.target.value; changed(); });
+    $('quality').addEventListener('input', (e) => { settings.quality = +e.target.value; changed(false); });
+    $('sizeSel').addEventListener('change', (e) => { settings.maxEdge = +e.target.value; changed(false); });
+
+    // Segmented choices
+    buildSeg($('colorSeg'), COLORS, (v) => { settings.colorMode = v; changed(); });
+    $('customColor').addEventListener('input', (e) => { settings.customColor = e.target.value; settings.colorMode = 'custom'; changed(); });
+    buildSeg($('posSeg'), POSITIONS, (v) => { settings.position = v; changed(); });
+    buildSeg($('ratioSeg'), RATIOS, (v) => { settings.ratio = v; changed(); });
+    buildSeg($('formatSeg'), FORMATS, (v) => { settings.format = v; changed(false); });
+  }
+
+  // Put the current settings into the controls
+  function syncControls() {
+    const s = settings;
+    const tpl = TEMPLATES.find(t => t.id === s.template);
+    tplButtons.forEach(b => {
+      const on = b.id === s.template;
+      b.btn.setAttribute('aria-checked', String(on));
+      b.btn.tabIndex = on ? 0 : -1;
+    });
+    FIELDS.forEach(f => { $('f-' + f.id).checked = !!s.fields[f.id]; });
+    $('customRow').hidden = !s.fields.custom;
+    if (document.activeElement !== $('customText')) $('customText').value = s.customText;
+    $('fontSel').value = s.font;
+    $('textScale').value = s.textScale;
+    $('textScaleOut').textContent = Math.round(s.textScale * 100) + '%';
+    $('borderSize').value = s.border[s.template];
+    $('borderOut').textContent = Math.round(s.border[s.template] * 100) + '%';
+    $('borderLabel').textContent = tpl.border;
+    $('colorRow').hidden = !tpl.color;
+    $('colorLabel').textContent = s.template === 'overlay' ? 'Text colour' : 'Frame colour';
+    syncSeg($('colorSeg'), s.colorMode);
+    $('customColor').value = s.customColor;
+    const item = current();
+    const sw = { white: '#FFFFFF', black: '#111112', tint: tintOf(item), custom: s.customColor };
+    $('colorSeg').querySelectorAll('[data-swatch]').forEach(n => { n.style.background = sw[n.dataset.swatch]; });
+    $('posRow').hidden = !tpl.position;
+    syncSeg($('posSeg'), s.position);
+    syncSeg($('ratioSeg'), s.ratio);
+    syncSeg($('formatSeg'), s.format);
+    $('qualityRow').hidden = s.format !== 'jpg';
+    $('quality').value = s.quality;
+    $('qualityOut').textContent = Math.round(s.quality * 100);
+    $('sizeSel').value = String(s.maxEdge);
+
+    // Names for the selected photo; the file's own names show as placeholders
+    const cam = $('ovCamera'), lens = $('ovLens');
+    cam.disabled = lens.disabled = !item;
+    $('applyAllBtn').disabled = !item;
+    if (document.activeElement !== cam) cam.value = item ? item.ov.camera : '';
+    if (document.activeElement !== lens) lens.value = item ? item.ov.lens : '';
+    cam.placeholder = item ? (item.info.camera || 'Not in file. Type a name') : '';
+    lens.placeholder = item ? (item.info.lens || 'Not in file. Type a lens') : '';
+
+    $('exportBtn').disabled = exporting || !item || !item.preview;
+    $('exportAllBtn').disabled = exporting || !state.photos.some(p => p.preview);
+  }
+
+  /* ==========================================================
+     13. WIRING
+     ========================================================== */
+  let clearArmed = false;
+
+  function wire() {
+    $('fileInput').addEventListener('change', (e) => addFiles(e.target.files));
+    $('exportBtn').addEventListener('click', exportCurrent);
+    $('exportAllBtn').addEventListener('click', exportAll);
+    $('copyBtn').addEventListener('click', copySummary);
+    $('prevBtn').addEventListener('click', () => selectPhoto(state.index - 1));
+    $('nextBtn').addEventListener('click', () => selectPhoto(state.index + 1));
+    $('tagFilter').addEventListener('input', filterTags);
+
+    // Two-step clear so nobody wipes the roll by accident
+    $('clearBtn').addEventListener('click', () => {
+      if (!clearArmed) {
+        clearArmed = true;
+        $('clearBtn').textContent = 'Click again to clear';
+        setTimeout(() => { if (clearArmed) { clearArmed = false; $('clearBtn').textContent = 'Clear roll'; } }, 3500);
+        return;
+      }
+      state.photos.forEach(p => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl); });
+      state.photos = [];
+      selectPhoto(-1);
+    });
+
+    // Arrow keys flip through the roll
+    document.addEventListener('keydown', (e) => {
+      const tag = (e.target.tagName || '').toLowerCase();
+      if (['input', 'select', 'textarea'].includes(tag) || e.target.closest('.tpl-grid')) return;
+      if (e.key === 'ArrowLeft' && state.index > 0) selectPhoto(state.index - 1);
+      if (e.key === 'ArrowRight' && state.index < state.photos.length - 1) selectPhoto(state.index + 1);
+    });
+
+    // Drag and drop anywhere
+    const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+    let depth = 0;
+    window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); depth++; $('drop').hidden = false; });
+    window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+    window.addEventListener('dragleave', (e) => { if (!hasFiles(e)) return; depth = Math.max(0, depth - 1); if (!depth) $('drop').hidden = true; });
+    window.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      $('drop').hidden = true;
+      addFiles(e.dataTransfer.files);
+    });
+
+    // Pasting an image also works
+    window.addEventListener('paste', (e) => {
+      const files = e.clipboardData && e.clipboardData.files;
+      if (files && files.length && !/input|textarea/i.test(e.target.tagName || '')) addFiles(files);
+    });
+
+    // Redraw when the stage changes size
+    if ('ResizeObserver' in window) new ResizeObserver(() => { queueRender(); queueThumbs(); drawHistogram(); }).observe(stageEl);
+    window.addEventListener('resize', () => { queueRender(); queueThumbs(); drawHistogram(); });
+
+    // Histogram colours follow the light/dark theme
+    const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    if (mq && mq.addEventListener) mq.addEventListener('change', drawHistogram);
+    new MutationObserver(drawHistogram).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
+
+  /* ==========================================================
+     14. START
+     ========================================================== */
+  buildControls();
+  wire();
+  state.photos.push(makeSample());
+  selectPhoto(0);
+  ensureFont(settings.font).then(() => { queueRender(); queueThumbs(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { queueRender(); queueThumbs(); });
+})();
+</script>
+</body>
+</html>
