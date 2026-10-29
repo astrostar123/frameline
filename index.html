@@ -1075,7 +1075,7 @@
     return { name: makeBrand ? `${makeBrand} ${m}` : m, brand: makeBrand };
   }
 
-  const isJunk = (s) => !s || /^[\s\-–—0.]*$/.test(s) || /^(unknown|none|n\/a)\b/i.test(s) || /^0(\.0)?\s*mm/i.test(s);
+  const isJunk = (s) => !s || /^[\s\-\u2013\u20140.]*$/.test(s) || /^(unknown|none|n\/a)\b/i.test(s) || /^0(\.0)?\s*mm/i.test(s);
 
   function lensName(raw, model) {
     for (const v of [raw.LensModel, raw.Lens]) {
