@@ -1097,8 +1097,8 @@
     const li = raw.LensInfo || raw.LensSpecification;
     if (!Array.isArray(li) || !(li[0] > 0)) return '';
     const [f1, f2, n1, n2] = li.map(Number);
-    const focal = !f2 || f1 === f2 ? `${trimNum(f1)}mm` : `${trimNum(f1)}–${trimNum(f2)}mm`;
-    const ap = n1 > 0 ? (n2 > 0 && n2 !== n1 ? ` f/${trimNum(n1)}–${trimNum(n2)}` : ` f/${trimNum(n1)}`) : '';
+    const focal = !f2 || f1 === f2 ? `${trimNum(f1)}mm` : `${trimNum(f1)}-${trimNum(f2)}mm`;
+    const ap = n1 > 0 ? (n2 > 0 && n2 !== n1 ? ` f/${trimNum(n1)}-${trimNum(n2)}` : ` f/${trimNum(n1)}`) : '';
     return focal + ap;
   }
 
